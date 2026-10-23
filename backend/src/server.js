@@ -23,9 +23,7 @@ const app = express();
 
 app.disable('x-powered-by');
 
-const isProduction = process.env.NODE_ENV === 'production';
 const isVercel = Boolean(process.env.VERCEL);
-
 const jwtSecret = process.env.JWT_SECRET;
 
 if (
@@ -45,6 +43,20 @@ if (!process.env.DATABASE_URL) {
 }
 
 // =====================================================
+// NORMALIZAÇÃO DE ORIGENS
+// =====================================================
+
+function removeTrailingSlashes(value) {
+  let result = value.trim();
+
+  while (result.endsWith('/')) {
+    result = result.slice(0, -1);
+  }
+
+  return result;
+}
+
+// =====================================================
 // SEGURANÇA HTTP
 // =====================================================
 
@@ -54,9 +66,11 @@ app.use(helmet());
 // CORS
 // =====================================================
 
-const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
+const allowedOrigins = (
+  process.env.CORS_ORIGIN || 'http://localhost:5173'
+)
   .split(',')
-  .map((origin) => origin.trim().replace(/\/+$/, ''))
+  .map(removeTrailingSlashes)
   .filter(Boolean);
 
 app.use(
@@ -67,7 +81,7 @@ app.use(
         return callback(null, true);
       }
 
-      const normalizedOrigin = origin.replace(/\/+$/, '');
+      const normalizedOrigin = removeTrailingSlashes(origin);
 
       if (allowedOrigins.includes(normalizedOrigin)) {
         return callback(null, true);
@@ -158,7 +172,8 @@ app.get('/health', async (_req, res) => {
     });
   } catch (error) {
     console.error(
-      'Health check: falha na conexão com o banco de dados.'
+      'Health check: falha na conexão com o banco de dados.',
+      error
     );
 
     return res.status(503).json({
