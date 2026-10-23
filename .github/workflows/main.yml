@@ -3,6 +3,7 @@ name: Supabase Keep Alive
 
 on:
   schedule:
+    # Todos os dias às 12:00 UTC (09:00 no horário de Brasília)
     - cron: "0 12 * * *"
   workflow_dispatch:
 
@@ -15,12 +16,12 @@ concurrency:
 
 jobs:
   keep-alive:
-    name: Manter conexão com Supabase
+    name: Verificar conexão com Supabase
     runs-on: ubuntu-latest
     timeout-minutes: 3
 
     steps:
-      - name: Validar secrets
+      - name: Validar configuração
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
@@ -29,25 +30,26 @@ jobs:
           set -euo pipefail
 
           if [[ -z "${SUPABASE_URL:-}" ]]; then
-            echo "::error::Configure o secret SUPABASE_URL."
+            echo "::error::O secret SUPABASE_URL não foi configurado."
             exit 1
           fi
 
           if [[ -z "${SUPABASE_ANON_KEY:-}" ]]; then
-            echo "::error::Configure o secret SUPABASE_ANON_KEY."
+            echo "::error::O secret SUPABASE_ANON_KEY não foi configurado."
             exit 1
           fi
 
           SUPABASE_URL="${SUPABASE_URL%/}"
 
           if [[ ! "$SUPABASE_URL" =~ ^https://[^/]+$ ]]; then
-            echo "::error::SUPABASE_URL deve ser apenas a URL base HTTPS do projeto."
+            echo "::error::SUPABASE_URL deve conter somente a URL base HTTPS do projeto."
             exit 1
           fi
 
-          echo "Secrets configurados corretamente."
+          echo "Configuração encontrada."
+          echo "URL base validada."
 
-      - name: Acessar API REST
+      - name: Testar API REST do Supabase
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
@@ -67,16 +69,17 @@ jobs:
             "$SUPABASE_URL/rest/v1/" \
             -H "apikey: $SUPABASE_ANON_KEY")
 
-          echo "Código HTTP recebido: $HTTP_CODE"
+          echo "Resposta HTTP da API REST: $HTTP_CODE"
 
           if [[ "$HTTP_CODE" =~ ^2[0-9][0-9]$ ]]; then
             echo "Conexão com a API REST estabelecida."
           else
             echo "::error::A API REST retornou HTTP $HTTP_CODE."
+            echo "Resposta do servidor:"
             head -c 1000 /tmp/supabase-response.txt
             echo
             exit 1
           fi
 
-      - name: Concluído
-        run: echo "Keep Alive executado com sucesso."
+      - name: Finalizar
+        run: echo "Keep Alive concluído com sucesso."
