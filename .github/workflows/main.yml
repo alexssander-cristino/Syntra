@@ -3,47 +3,79 @@ name: Supabase Keep Alive
 
 on:
   schedule:
-    - cron: '0 12 * * *'
+    # Todos os dias às 12:00 UTC (09:00 no horário de Brasília)
+    - cron: "0 12 * * *"
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-keep-alive
+  cancel-in-progress: false
 
 jobs:
   keep-alive:
+    name: Verificar conexão com Supabase
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 3
 
     steps:
-      - name: Validar configurações
+      - name: Validar configuração
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        shell: bash
         run: |
           set -euo pipefail
 
-          if [ -z "$SUPABASE_URL" ]; then
-            echo "::error::O secret SUPABASE_URL está vazio ou não está disponível."
+          if [[ -z "${SUPABASE_URL:-}" ]]; then
+            echo "::error::O secret SUPABASE_URL não foi configurado."
             exit 1
           fi
 
-          if [ -z "$SUPABASE_ANON_KEY" ]; then
-            echo "::error::O secret SUPABASE_ANON_KEY está vazio ou não está disponível."
+          if [[ -z "${SUPABASE_ANON_KEY:-}" ]]; then
+            echo "::error::O secret SUPABASE_ANON_KEY não foi configurado."
             exit 1
           fi
 
-          SUPABASE_URL="${SUPABASE_URL%/}"
+          if [[ ! "$SUPABASE_URL" =~ ^https://[^/]+$ ]]; then
+            echo "::error::SUPABASE_URL deve conter somente a URL base HTTPS do projeto."
+            exit 1
+          fi
 
-          case "$SUPABASE_URL" in
-            https://*) ;;
-            *)
-              echo "::error::SUPABASE_URL precisa começar com https://"
-              exit 1
-              ;;
-          esac
+          echo "Configuração encontrada."
+          echo "URL base validada."
 
-          curl --fail --silent --show-error \
+      - name: Testar API REST do Supabase
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          HTTP_CODE=$(curl \
+            --silent \
+            --show-error \
+            --output /tmp/supabase-response.txt \
+            --write-out "%{http_code}" \
+            --connect-timeout 10 \
             --max-time 30 \
-            "$SUPABASE_URL/rest/v1/empresas?select=id&limit=1" \
-            -H "apikey: $SUPABASE_ANON_KEY" \
-            -H "Authorization: Bearer $SUPABASE_ANON_KEY"
+            "$SUPABASE_URL/rest/v1/" \
+            -H "apikey: $SUPABASE_ANON_KEY")
 
-          echo
-          echo "Supabase acessado com sucesso."
+          echo "Resposta HTTP da API REST: $HTTP_CODE"
+
+          if [[ "$HTTP_CODE" =~ ^2[0-9][0-9]$ ]]; then
+            echo "Conexão com a API REST estabelecida."
+          else
+            echo "::error::A API REST retornou HTTP $HTTP_CODE."
+            echo "Resposta do servidor:"
+            head -c 1000 /tmp/supabase-response.txt
+            echo
+            exit 1
+          fi
+
+      - name: Finalizar
+        run: echo "Keep Alive concluído com sucesso."
