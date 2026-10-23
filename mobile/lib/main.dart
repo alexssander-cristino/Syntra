@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 const apiBase = String.fromEnvironment(
   'API_BASE_URL',
-  defaultValue: 'http://10.0.2.2:3000/api',
+  defaultValue: 'https://syntra-ia-three.vercel.app/api',
 );
 const purple = Color(0xFF8067E8);
 
