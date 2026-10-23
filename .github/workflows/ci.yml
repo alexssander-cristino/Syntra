@@ -1,0 +1,75 @@
+
+name: Verificações
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+      - atualizacoes
+      - fix/auto-merge-ci
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validar:
+    name: validar
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Baixar código
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Instalar dependências
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ ! -f package.json ]; then
+            echo "package.json não encontrado na raiz; pulando etapas npm."
+            exit 0
+          fi
+
+          if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then
+            npm ci
+          else
+            npm install --no-package-lock
+          fi
+
+          npm run lint --if-present
+          npm test --if-present
+
+      - name: Verificar sintaxe JavaScript
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          encontrou=0
+
+          while IFS= read -r -d '' arquivo; do
+            encontrou=1
+            echo "Verificando: $arquivo"
+            node --check "$arquivo"
+          done < <(
+            find server public/js \
+              -type f \
+              -name '*.js' \
+              -not -path '*/node_modules/*' \
+              -print0 2>/dev/null || true
+          )
+
+          if [ "$encontrou" -eq 0 ]; then
+            echo "Nenhum arquivo JavaScript encontrado para verificar."
+          fi
