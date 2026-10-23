@@ -38,7 +38,10 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
-// Remove barras finais sem utilizar uma expressão regular.
+// =====================================================
+// NORMALIZAÇÃO DE ORIGENS
+// =====================================================
+
 function removeTrailingSlashes(value) {
   let result = value.trim();
 
@@ -178,7 +181,9 @@ app.get('/health', async (_req, res) => {
 // =====================================================
 
 app.use('/api/auth', authLimiter, authRoutes);
+
 app.use('/api/conversations', conversationRoutes);
+
 app.use('/api/chat', chatLimiter, chatRoutes);
 
 // =====================================================

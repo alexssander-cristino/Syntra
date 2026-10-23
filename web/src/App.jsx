@@ -4,28 +4,10 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { api } from './api';
 import {
-  Plus,
-  MessageSquare,
-  Settings,
-  LogOut,
-  Send,
-  Copy,
-  RotateCcw,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Sparkles,
-  UserRound,
-  LoaderCircle,
-  Trash2,
-  X,
-  Check,
-  AlertCircle,
-  Sun,
-  Moon,
-  Code2,
-  Lightbulb,
-  BookOpen,
-  PenLine,
+  Plus, MessageSquare, Settings, LogOut, Send, Copy, RotateCcw,
+  PanelLeftClose, PanelLeftOpen, Sparkles, UserRound, LoaderCircle,
+  Trash2, X, Check, AlertCircle, Sun, Moon,
+  Code2, Lightbulb, BookOpen, PenLine
 } from 'lucide-react';
 
 const isMobile = () => window.matchMedia('(max-width: 720px)').matches;
@@ -34,7 +16,7 @@ const SUGGESTIONS = [
   [Code2, 'Escrever código', 'Crie uma função JavaScript para ordenar uma lista.'],
   [Lightbulb, 'Explorar ideias', 'Me ajude a desenvolver uma ideia de negócio.'],
   [BookOpen, 'Aprender algo', 'Explique redes neurais de forma simples.'],
-  [PenLine, 'Criar conteúdo', 'Escreva uma apresentação curta e profissional.'],
+  [PenLine, 'Criar conteúdo', 'Escreva uma apresentação curta e profissional.']
 ];
 
 function AuthScreen({ onAuth, theme, onToggleTheme }) {
@@ -53,7 +35,7 @@ function AuthScreen({ onAuth, theme, onToggleTheme }) {
     try {
       const data = await api(`/auth/${mode}`, {
         method: 'POST',
-        body: JSON.stringify({ name, email, password }),
+        body: JSON.stringify({ name, email, password })
       });
 
       onAuth(data);
@@ -82,9 +64,7 @@ function AuthScreen({ onAuth, theme, onToggleTheme }) {
           <Sparkles size={25} />
         </div>
 
-        <h1>
-          Syntra<span>.</span>
-        </h1>
+        <h1>Syntra<span>.</span></h1>
 
         <p className="muted">
           {mode === 'login'
@@ -98,7 +78,7 @@ function AuthScreen({ onAuth, theme, onToggleTheme }) {
               Nome
               <input
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={e => setName(e.target.value)}
                 minLength={2}
                 maxLength={80}
                 required
@@ -113,7 +93,7 @@ function AuthScreen({ onAuth, theme, onToggleTheme }) {
             <input
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={e => setEmail(e.target.value)}
               required
               autoComplete="email"
               placeholder="voce@exemplo.com"
@@ -125,7 +105,7 @@ function AuthScreen({ onAuth, theme, onToggleTheme }) {
             <input
               type="password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={e => setPassword(e.target.value)}
               required
               minLength={8}
               autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
@@ -170,7 +150,7 @@ function AuthScreen({ onAuth, theme, onToggleTheme }) {
 
 function SettingsModal({ onClose, models, model, onModel, user, onLogout }) {
   useEffect(() => {
-    const onKey = (e) => {
+    const onKey = e => {
       if (e.key === 'Escape') {
         onClose();
       }
@@ -184,7 +164,7 @@ function SettingsModal({ onClose, models, model, onModel, user, onLogout }) {
   return (
     <div
       className="modal-backdrop"
-      onMouseDown={(e) => {
+      onMouseDown={e => {
         if (e.target === e.currentTarget) {
           onClose();
         }
@@ -213,12 +193,13 @@ function SettingsModal({ onClose, models, model, onModel, user, onLogout }) {
 
         <label className="setting-label">
           Modelo de inteligência artificial
-          <select value={model} onChange={(e) => onModel(e.target.value)}>
+
+          <select value={model} onChange={e => onModel(e.target.value)}>
             {models.length === 0 && (
               <option value={model}>{model} (padrão)</option>
             )}
 
-            {models.map((m) => (
+            {models.map(m => (
               <option key={m.name} value={m.name}>
                 {m.name}
               </option>
@@ -263,9 +244,13 @@ function Message({ message, onCopy, onRegenerate, last, busy }) {
   const [copied, setCopied] = useState(false);
 
   async function handleCopy() {
-    await onCopy(message.content);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1600);
+    try {
+      await onCopy(message.content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch (error) {
+      console.error('Não foi possível copiar a mensagem:', error);
+    }
   }
 
   return (
@@ -307,7 +292,7 @@ function Message({ message, onCopy, onRegenerate, last, busy }) {
                     <code className={className} {...props}>
                       {children}
                     </code>
-                  ),
+                  )
               }}
             >
               {message.content}
@@ -319,21 +304,14 @@ function Message({ message, onCopy, onRegenerate, last, busy }) {
 
         {isAssistant && !message.pending && (
           <div className="message-actions">
-            <button
-              onClick={() => {
-                void handleCopy();
-              }}
-              title="Copiar resposta"
-            >
+            <button onClick={() => { void handleCopy(); }} title="Copiar resposta">
               {copied ? <Check size={14} /> : <Copy size={14} />}
               {copied ? 'Copiado' : 'Copiar'}
             </button>
 
             {last && (
               <button
-                onClick={() => {
-                  void onRegenerate();
-                }}
+                onClick={() => { void onRegenerate(); }}
                 disabled={busy}
                 title="Regenerar resposta"
               >
@@ -361,9 +339,10 @@ export default function App() {
     () => localStorage.getItem('syntra-theme') || 'dark'
   );
 
-  const toggleTheme = useCallback(() => {
-    setTheme((current) => (current === 'dark' ? 'light' : 'dark'));
-  }, []);
+  const toggleTheme = useCallback(
+    () => setTheme(current => current === 'dark' ? 'light' : 'dark'),
+    []
+  );
 
   useEffect(() => {
     localStorage.setItem('syntra-theme', theme);
@@ -390,7 +369,7 @@ export default function App() {
   const token = auth?.token;
 
   const activeConversation = useMemo(
-    () => conversations.find((c) => c.id === activeId),
+    () => conversations.find(c => c.id === activeId),
     [conversations, activeId]
   );
 
@@ -411,19 +390,21 @@ export default function App() {
 
   useEffect(() => {
     if (!token) {
-      return;
+      return undefined;
     }
 
     let cancelled = false;
 
-    Promise.all([
-      api('/conversations', { token }),
-      api('/chat/models', { token }).catch(() => ({
-        models: [],
-        defaultModel: 'qwen3:4b',
-      })),
-    ])
-      .then(([convData, modelData]) => {
+    async function loadInitialData() {
+      try {
+        const [convData, modelData] = await Promise.all([
+          api('/conversations', { token }),
+          api('/chat/models', { token }).catch(() => ({
+            models: [],
+            defaultModel: 'qwen3:4b'
+          }))
+        ]);
+
         if (cancelled) {
           return;
         }
@@ -431,21 +412,20 @@ export default function App() {
         setConversations(convData.conversations || []);
         setModels(modelData.models || []);
 
-        const initialModel = modelData.models?.some(
-          (m) => m.name === model
-        )
+        const initialModel = modelData.models?.some(m => m.name === model)
           ? model
-          : modelData.models?.[0]?.name ||
+          : (
+            modelData.models?.[0]?.name ||
             modelData.defaultModel ||
-            'qwen3:4b';
+            'qwen3:4b'
+          );
 
         setModel(initialModel);
 
         if (convData.conversations?.length) {
           setActiveId(convData.conversations[0].id);
         }
-      })
-      .catch((err) => {
+      } catch (err) {
         if (!cancelled) {
           if (/Sessão inválida|Entre novamente/.test(err.message)) {
             logout();
@@ -453,39 +433,49 @@ export default function App() {
             setError(err.message);
           }
         }
-      });
+      }
+    }
+
+    void loadInitialData();
 
     return () => {
       cancelled = true;
     };
-  }, [token, logout]);
+  }, [token, logout, model]);
 
   useEffect(() => {
     if (!token || !activeId) {
       setMessages([]);
-      return;
+      setLoadingMessages(false);
+      return undefined;
     }
 
     let cancelled = false;
 
-    setLoadingMessages(true);
+    async function loadMessages() {
+      setLoadingMessages(true);
 
-    api(`/conversations/${activeId}/messages`, { token })
-      .then((data) => {
+      try {
+        const data = await api(
+          `/conversations/${activeId}/messages`,
+          { token }
+        );
+
         if (!cancelled) {
           setMessages(data.messages || []);
         }
-      })
-      .catch((err) => {
+      } catch (err) {
         if (!cancelled) {
           setError(err.message);
         }
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) {
           setLoadingMessages(false);
         }
-      });
+      }
+    }
+
+    void loadMessages();
 
     return () => {
       cancelled = true;
@@ -495,13 +485,13 @@ export default function App() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({
       behavior: 'smooth',
-      block: 'end',
+      block: 'end'
     });
   }, [messages, busy]);
 
   useEffect(() => {
     if (!toast) {
-      return;
+      return undefined;
     }
 
     const id = setTimeout(() => setToast(''), 1800);
@@ -524,10 +514,10 @@ export default function App() {
   // Atalho Ctrl/Cmd + K para nova conversa.
   useEffect(() => {
     if (!token) {
-      return;
+      return undefined;
     }
 
-    const onKey = (e) => {
+    const onKey = e => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         newChatRef.current?.();
@@ -546,13 +536,10 @@ export default function App() {
       const data = await api('/conversations', {
         token,
         method: 'POST',
-        body: JSON.stringify({
-          title: 'Nova conversa',
-          model,
-        }),
+        body: JSON.stringify({ title: 'Nova conversa', model })
       });
 
-      setConversations((old) => [data.conversation, ...old]);
+      setConversations(old => [data.conversation, ...old]);
       setActiveId(data.conversation.id);
       setMessages([]);
       setDraft('');
@@ -596,19 +583,19 @@ export default function App() {
           method: 'POST',
           body: JSON.stringify({
             title: text.slice(0, 60),
-            model,
-          }),
+            model
+          })
         });
 
         conversationId = created.conversation.id;
         setActiveId(conversationId);
-        setConversations((old) => [created.conversation, ...old]);
+        setConversations(old => [created.conversation, ...old]);
       }
 
       const optimistic = [
         ...messages,
         { role: 'user', content: text },
-        { role: 'assistant', content: '', pending: true },
+        { role: 'assistant', content: '', pending: true }
       ];
 
       setMessages(optimistic);
@@ -619,18 +606,18 @@ export default function App() {
         body: JSON.stringify({
           conversationId,
           message: text,
-          model: activeConversation?.model || model,
-        }),
+          model: activeConversation?.model || model
+        })
       });
 
-      setMessages((old) => [
-        ...old.filter((m) => !m.pending),
-        data.message,
+      setMessages(old => [
+        ...old.filter(m => !m.pending),
+        data.message
       ]);
 
       await refreshConversations();
     } catch (err) {
-      setMessages((old) => old.filter((m) => !m.pending));
+      setMessages(old => old.filter(m => !m.pending));
       setError(err.message);
       setDraft(text);
     } finally {
@@ -653,11 +640,11 @@ export default function App() {
         {
           token,
           method: 'POST',
-          body: '{}',
+          body: '{}'
         }
       );
 
-      setMessages((old) => [...old.slice(0, -1), data.message]);
+      setMessages(old => [...old.slice(0, -1), data.message]);
       await refreshConversations();
     } catch (err) {
       setError(err.message);
@@ -669,8 +656,8 @@ export default function App() {
         );
 
         setMessages(data.messages || []);
-      } catch {
-        // O erro principal já foi apresentado ao usuário.
+      } catch (reloadError) {
+        console.error('Não foi possível recarregar as mensagens:', reloadError);
       }
     } finally {
       setBusy(false);
@@ -687,11 +674,10 @@ export default function App() {
     try {
       await api(`/conversations/${id}`, {
         token,
-        method: 'DELETE',
+        method: 'DELETE'
       });
 
-      const remaining = conversations.filter((c) => c.id !== id);
-
+      const remaining = conversations.filter(c => c.id !== id);
       setConversations(remaining);
 
       if (activeId === id) {
@@ -709,6 +695,7 @@ export default function App() {
       setToast('Resposta copiada');
     } catch {
       setToast('Não foi possível copiar automaticamente');
+      throw new Error('Não foi possível copiar a resposta.');
     }
   }
 
@@ -723,12 +710,12 @@ export default function App() {
       await api(`/conversations/${activeId}`, {
         token,
         method: 'PATCH',
-        body: JSON.stringify({ model: value }),
+        body: JSON.stringify({ model: value })
       });
 
-      setConversations((old) =>
-        old.map((c) => (c.id === activeId ? { ...c, model: value } : c))
-      );
+      setConversations(old => old.map(c =>
+        c.id === activeId ? { ...c, model: value } : c
+      ));
     } catch (err) {
       setError(err.message);
     }
@@ -739,7 +726,7 @@ export default function App() {
       <AuthScreen
         theme={theme}
         onToggleTheme={toggleTheme}
-        onAuth={(data) => {
+        onAuth={data => {
           setAuth(data);
           localStorage.setItem('syntra-auth', JSON.stringify(data));
         }}
@@ -791,9 +778,7 @@ export default function App() {
 
         <button
           className="new-chat"
-          onClick={() => {
-            void createConversation();
-          }}
+          onClick={() => { void createConversation(); }}
         >
           <Plus size={17} />
           Nova conversa
@@ -803,12 +788,10 @@ export default function App() {
         <div className="side-section-label">Recentes</div>
 
         <nav className="conversation-list">
-          {conversations.map((c) => (
+          {conversations.map(c => (
             <button
               key={c.id}
-              className={`conversation-item ${
-                activeId === c.id ? 'selected' : ''
-              }`}
+              className={`conversation-item ${activeId === c.id ? 'selected' : ''}`}
               onClick={() => {
                 setActiveId(c.id);
 
@@ -827,10 +810,8 @@ export default function App() {
                 role="button"
                 tabIndex={0}
                 aria-label="Excluir conversa"
-                onClick={(e) => {
-                  void deleteConversation(e, c.id);
-                }}
-                onKeyDown={(e) => {
+                onClick={e => { void deleteConversation(e, c.id); }}
+                onKeyDown={e => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
                     void deleteConversation(e, c.id);
@@ -888,11 +869,9 @@ export default function App() {
             onClick={() => setSidebarOpen(!sidebarOpen)}
             aria-label="Alternar menu"
           >
-            {sidebarOpen ? (
-              <PanelLeftClose size={19} />
-            ) : (
-              <PanelLeftOpen size={19} />
-            )}
+            {sidebarOpen
+              ? <PanelLeftClose size={19} />
+              : <PanelLeftOpen size={19} />}
           </button>
 
           <div className="topbar-model">
@@ -947,9 +926,7 @@ export default function App() {
                   <button
                     key={label}
                     className="suggestion"
-                    onClick={() => {
-                      void sendMessage(prompt);
-                    }}
+                    onClick={() => { void sendMessage(prompt); }}
                     disabled={busy}
                   >
                     <span className="suggestion-icon">
@@ -991,6 +968,7 @@ export default function App() {
             <div className="inline-error" role="alert">
               <AlertCircle size={15} />
               <span>{error}</span>
+
               <button
                 onClick={() => setError('')}
                 aria-label="Fechar aviso"
@@ -1002,7 +980,7 @@ export default function App() {
 
           <form
             className="composer"
-            onSubmit={(e) => {
+            onSubmit={e => {
               e.preventDefault();
               void sendMessage();
             }}
@@ -1010,8 +988,8 @@ export default function App() {
             <textarea
               ref={inputRef}
               value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
+              onChange={e => setDraft(e.target.value)}
+              onKeyDown={e => {
                 if (
                   e.key === 'Enter' &&
                   !e.shiftKey &&
@@ -1039,11 +1017,9 @@ export default function App() {
                 disabled={busy || !draft.trim()}
                 aria-label="Enviar mensagem"
               >
-                {busy ? (
-                  <LoaderCircle size={17} className="spin" />
-                ) : (
-                  <Send size={17} />
-                )}
+                {busy
+                  ? <LoaderCircle size={17} className="spin" />
+                  : <Send size={17} />}
               </button>
             </div>
           </form>
@@ -1059,9 +1035,7 @@ export default function App() {
           onClose={() => setSettingsOpen(false)}
           models={models}
           model={activeConversation?.model || model}
-          onModel={(value) => {
-            void changeModel(value);
-          }}
+          onModel={changeModel}
           user={auth.user}
           onLogout={logout}
         />
