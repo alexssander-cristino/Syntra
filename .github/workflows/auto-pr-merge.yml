@@ -4,7 +4,7 @@ name: Criar PR e mesclar automaticamente
 on:
   push:
     branches:
-      - auto-merge-ci
+      - Atualizacao-Automatica
   workflow_dispatch:
 
 permissions:
