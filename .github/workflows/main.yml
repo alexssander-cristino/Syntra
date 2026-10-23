@@ -39,6 +39,8 @@ jobs:
             exit 1
           fi
 
+          SUPABASE_URL="${SUPABASE_URL%/}"
+
           if [[ ! "$SUPABASE_URL" =~ ^https://[^/]+$ ]]; then
             echo "::error::SUPABASE_URL deve conter somente a URL base HTTPS do projeto."
             exit 1
@@ -54,6 +56,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
+          SUPABASE_URL="${SUPABASE_URL%/}"
 
           HTTP_CODE=$(curl \
             --silent \
