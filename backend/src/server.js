@@ -12,20 +12,8 @@ import chatRoutes from './routes/chat.js';
 import { pool } from './db.js';
 
 // =====================================================
-// CONFIGURAÇÕES OBRIGATÓRIAS
+// CONFIGURAÇÕES
 // =====================================================
-
-if (
-  !process.env.JWT_SECRET ||
-  process.env.JWT_SECRET.length < 32 ||
-  process.env.JWT_SECRET.includes('CHANGE_THIS')
-) {
-  console.error(
-    'Configure JWT_SECRET com pelo menos 32 caracteres aleatórios.'
-  );
-
-  process.exit(1);
-}
 
 // =====================================================
 // APLICAÇÃO EXPRESS
@@ -35,23 +23,53 @@ const app = express();
 
 app.disable('x-powered-by');
 
+const isProduction = process.env.NODE_ENV === 'production';
+const isVercel = Boolean(process.env.VERCEL);
+
+const jwtSecret = process.env.JWT_SECRET;
+
+if (
+  typeof jwtSecret !== 'string' ||
+  jwtSecret.length < 32 ||
+  jwtSecret.includes('CHANGE_THIS')
+) {
+  throw new Error(
+    'Configure JWT_SECRET com pelo menos 32 caracteres aleatórios.'
+  );
+}
+
+if (!process.env.DATABASE_URL) {
+  throw new Error(
+    'Configure DATABASE_URL com a conexão do PostgreSQL.'
+  );
+}
+
+// =====================================================
+// SEGURANÇA HTTP
+// =====================================================
+
 app.use(helmet());
 
 // =====================================================
 // CORS
 // =====================================================
 
-const origins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
+const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
   .split(',')
-  .map((value) => value.trim())
+  .map((origin) => origin.trim().replace(/\/+$/, ''))
   .filter(Boolean);
 
 app.use(
   cors({
     origin(origin, callback) {
-      // Permite chamadas sem Origin, como health checks
-      // e requisições feitas por ferramentas de backend.
-      if (!origin || origins.includes(origin)) {
+      // Permite requisições sem Origin, como chamadas entre servidores.
+      if (!origin) {
+        return callback(null, true);
+      }
+
+      const normalizedOrigin = origin.replace(/\/+$/, '');
+
+      if (allowedOrigins.includes(normalizedOrigin)) {
         return callback(null, true);
       }
 
@@ -59,6 +77,10 @@ app.use(
         new Error('Origem não permitida pelo CORS.')
       );
     },
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: false,
+    optionsSuccessStatus: 204,
   })
 );
 
@@ -66,31 +88,19 @@ app.use(
 // MIDDLEWARES
 // =====================================================
 
-app.use(express.json({ limit: '256kb' }));
+app.use(
+  express.json({
+    limit: '256kb',
+    strict: true,
+  })
+);
 
-// =====================================================
-// HEALTH CHECK
-// =====================================================
-
-app.get('/health', async (_req, res) => {
-  try {
-    await pool.query('SELECT 1');
-
-    return res.status(200).json({
-      ok: true,
-      database: 'connected',
-      service: 'syntra-api',
-    });
-  } catch (error) {
-    console.error('Health check: falha na conexão com o banco.');
-
-    return res.status(503).json({
-      ok: false,
-      database: 'disconnected',
-      service: 'syntra-api',
-    });
-  }
-});
+app.use(
+  express.urlencoded({
+    extended: false,
+    limit: '32kb',
+  })
+);
 
 // =====================================================
 // RATE LIMITING
@@ -117,6 +127,49 @@ const chatLimiter = rateLimit({
 });
 
 // =====================================================
+// ROTA INICIAL
+// =====================================================
+
+app.get('/', (_req, res) => {
+  return res.status(200).json({
+    name: 'Syntra API',
+    status: 'online',
+    message: 'A API do Syntra está funcionando.',
+    health: '/health',
+  });
+});
+
+// =====================================================
+// HEALTH CHECK
+// =====================================================
+
+// =====================================================
+// HEALTH CHECK
+// =====================================================
+
+app.get('/health', async (_req, res) => {
+  try {
+    await pool.query('SELECT 1');
+
+    return res.status(200).json({
+      ok: true,
+      database: 'connected',
+      service: 'syntra-api',
+    });
+  } catch (error) {
+    console.error(
+      'Health check: falha na conexão com o banco de dados.'
+    );
+
+    return res.status(503).json({
+      ok: false,
+      database: 'disconnected',
+      service: 'syntra-api',
+    });
+  }
+});
+
+// =====================================================
 // ROTAS DA API
 // =====================================================
 
@@ -130,11 +183,7 @@ app.use('/api/chat', chatLimiter, chatRoutes);
 // ROTA NÃO ENCONTRADA
 // =====================================================
 
-app.use((req, res, next) => {
-  if (res.headersSent) {
-    return next();
-  }
-
+app.use((req, res) => {
   return res.status(404).json({
     error: 'Rota não encontrada.',
     path: req.path,
@@ -146,17 +195,29 @@ app.use((req, res, next) => {
 // =====================================================
 
 app.use((err, _req, res, _next) => {
+  if (res.headersSent) {
+    return;
+  }
+
   if (err.message === 'Origem não permitida pelo CORS.') {
     return res.status(403).json({
-      error: err.message,
+      error: 'Origem não permitida pelo CORS.',
+    });
+  }
+
+  if (err.type === 'entity.too.large') {
+    return res.status(413).json({
+      error: 'O corpo da requisição excede o tamanho permitido.',
+    });
+  }
+
+  if (err instanceof SyntaxError && 'body' in err) {
+    return res.status(400).json({
+      error: 'O JSON enviado é inválido.',
     });
   }
 
   console.error('Erro interno da API:', err);
-
-  if (res.headersSent) {
-    return;
-  }
 
   return res.status(500).json({
     error: 'Erro interno do servidor.',
@@ -167,16 +228,13 @@ app.use((err, _req, res, _next) => {
 // EXPORTAÇÃO PARA O VERCEL
 // =====================================================
 
-// O Vercel importa a aplicação Express como ponto de entrada.
 export default app;
 
 // =====================================================
 // EXECUÇÃO LOCAL
 // =====================================================
 
-// No Vercel, a plataforma gerencia a execução da aplicação.
-// Localmente, iniciamos o servidor normalmente.
-if (!process.env.VERCEL) {
+if (!isVercel) {
   const port = Number(process.env.PORT || 3000);
 
   const server = app.listen(port, () => {
@@ -186,23 +244,40 @@ if (!process.env.VERCEL) {
   let shuttingDown = false;
 
   async function shutdown() {
-    if (shuttingDown) return;
+    if (shuttingDown) {
+      return;
+    }
 
     shuttingDown = true;
 
     console.log('Encerrando Syntra API...');
 
-    server.close(async () => {
+    server.close(async (serverError) => {
       try {
         await pool.end();
-        process.exit(0);
+
+        if (serverError) {
+          console.error(
+            'Erro ao encerrar o servidor:',
+            serverError
+          );
+
+          process.exitCode = 1;
+          return;
+        }
+
+        console.log('Servidor e conexões encerrados.');
       } catch (error) {
-        console.error('Erro ao encerrar conexões:', error);
-        process.exit(1);
+        console.error(
+          'Erro ao encerrar conexões com o banco:',
+          error
+        );
+
+        process.exitCode = 1;
       }
     });
   }
 
-  process.on('SIGINT', shutdown);
-  process.on('SIGTERM', shutdown);
+  process.once('SIGINT', shutdown);
+  process.once('SIGTERM', shutdown);
 }
