@@ -12,7 +12,7 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: auto-pr-merge-ci
+  group: atualizacao-automatica-pr
   cancel-in-progress: false
 
 jobs:
@@ -69,46 +69,87 @@ jobs:
           done
 
   criar-pr:
-    name: Criar PR e ativar Auto-merge
+    name: Criar PR e solicitar Auto-merge
     needs: validar
     runs-on: ubuntu-latest
 
     steps:
-      - name: Criar PR e ativar mesclagem automática
+      - name: Criar ou atualizar PR para main
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
+          HEAD_BRANCH: Atualizacao-Automatica
+          BASE_BRANCH: main
         shell: bash
         run: |
           set -euo pipefail
 
+          echo "Verificando diferenças entre as branches..."
+
+          git init -q /tmp/pr-check
+          cd /tmp/pr-check
+
+          git remote add origin "https://github.com/${REPO}.git"
+
+          git fetch --no-tags origin \
+            "+refs/heads/${HEAD_BRANCH}:refs/remotes/origin/${HEAD_BRANCH}" \
+            "+refs/heads/${BASE_BRANCH}:refs/remotes/origin/${BASE_BRANCH}"
+
+          HEAD_SHA="$(git rev-parse "refs/remotes/origin/${HEAD_BRANCH}")"
+          BASE_SHA="$(git rev-parse "refs/remotes/origin/${BASE_BRANCH}")"
+
+          echo "Branch de origem: ${HEAD_BRANCH}"
+          echo "Branch de destino: ${BASE_BRANCH}"
+
+          if [ "$HEAD_SHA" = "$BASE_SHA" ]; then
+            echo "As branches estão no mesmo commit. Nenhum PR é necessário."
+            exit 0
+          fi
+
+          if git merge-base --is-ancestor "$HEAD_SHA" "$BASE_SHA"; then
+            echo "A branch de origem já está incorporada à main."
+            exit 0
+          fi
+
+          if ! git merge-base "$BASE_SHA" "$HEAD_SHA" >/dev/null 2>&1; then
+            echo "::error::As branches não possuem histórico comum."
+            exit 1
+          fi
+
           PR_NUMBER="$(gh pr list \
             --repo "$REPO" \
-            --head auto-merge-ci \
-            --base main \
+            --head "${HEAD_BRANCH}" \
+            --base "${BASE_BRANCH}" \
             --state open \
             --json number \
             --jq '.[0].number // empty')"
 
           if [ -z "$PR_NUMBER" ]; then
-            gh pr create \
-              --repo "$REPO" \
-              --head auto-merge-ci \
-              --base main \
-              --title "Automação CI: auto-merge-ci para main" \
-              --body "PR criado automaticamente pelo GitHub Actions. O merge automático será solicitado após as verificações."
+            if ! git diff --quiet "$BASE_SHA" "$HEAD_SHA"; then
+              PR_URL="$(gh pr create \
+                --repo "$REPO" \
+                --head "$HEAD_BRANCH" \
+                --base "$BASE_BRANCH" \
+                --title "Atualização automática para main" \
+                --body "Pull Request criado pelo GitHub Actions após a validação do projeto.")"
 
-            PR_NUMBER="$(gh pr list \
-              --repo "$REPO" \
-              --head auto-merge-ci \
-              --base main \
-              --state open \
-              --json number \
-              --jq '.[0].number // empty')"
+              echo "Pull Request criado: $PR_URL"
+
+              PR_NUMBER="$(gh pr list \
+                --repo "$REPO" \
+                --head "$HEAD_BRANCH" \
+                --base "$BASE_BRANCH" \
+                --state open \
+                --json number \
+                --jq '.[0].number // empty')"
+            else
+              echo "Não existem diferenças de arquivos entre as branches."
+              exit 0
+            fi
           fi
 
           if [ -z "$PR_NUMBER" ]; then
-            echo "Não foi possível localizar o Pull Request."
+            echo "::error::Não foi possível localizar o Pull Request."
             exit 1
           fi
 
