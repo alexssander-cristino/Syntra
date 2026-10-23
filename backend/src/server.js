@@ -72,6 +72,15 @@ app.use(express.json({ limit: '256kb' }));
 // HEALTH CHECK
 // =====================================================
 
+app.get('/', (_req, res) => {
+  res.status(200).json({
+    name: 'Syntra API',
+    status: 'online',
+    message: 'A API do Syntra está funcionando.',
+    health: '/health',
+  });
+});
+
 app.get('/health', async (_req, res) => {
   try {
     await pool.query('SELECT 1');
