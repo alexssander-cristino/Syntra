@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
-    "test": "node --test src/*.test.js"
+    "test": "node --test"
   },
   "engines": {
     "node": ">=20"
