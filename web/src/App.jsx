@@ -700,7 +700,6 @@ export default function App() {
     }
 
     let cancelled = false;
-    const controller = new AbortController();
     const timer = window.setTimeout(async () => {
       try {
         const params = new URLSearchParams();
@@ -708,7 +707,6 @@ export default function App() {
         if (showArchived) params.set('archived', 'true');
         const suffix = params.toString();
         const data = await api(`/conversations${suffix ? `?${suffix}` : ''}`, {
-          signal: controller.signal
         });
         if (!cancelled) setVisibleConversations(data.conversations || []);
       } catch (err) {
@@ -721,7 +719,6 @@ export default function App() {
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
-      controller.abort();
     };
   }, [token, conversationSearch, showArchived, conversations]);
 
