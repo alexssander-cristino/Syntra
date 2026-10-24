@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { pool } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
+import { extractMemoryCandidate, formatMemoryContext } from '../memory.js';
 
 const router = Router();
 
@@ -88,10 +89,42 @@ async function getOwnedConversation(id, userId) {
 // COMUNICAÇÃO COM O OLLAMA
 // =====================================================
 
-async function ollamaChat(model, messages) {
+async function getUserMemories(userId) {
+  try {
+    const result = await pool.query(
+      'SELECT content FROM user_memories WHERE user_id = $1 ORDER BY updated_at DESC, id DESC LIMIT 30',
+      [userId]
+    );
+    return result.rows;
+  } catch (error) {
+    // A missing/not-yet-applied migration must not disable ordinary chat.
+    console.error('[Syntra/Memory] Não foi possível carregar memórias:', error.message);
+    return [];
+  }
+}
+
+async function saveAutomaticMemory(userId, message) {
+  const candidate = extractMemoryCandidate(message);
+  if (!candidate) return;
+  try {
+    await pool.query(
+      `INSERT INTO user_memories (user_id, content, source)
+       VALUES ($1, $2, 'auto')
+       ON CONFLICT (user_id, lower(content))
+       DO UPDATE SET updated_at = NOW()`,
+      [userId, candidate]
+    );
+  } catch (error) {
+    // Memory is an enhancement, so failures must not break a response.
+    console.error('[Syntra/Memory] Não foi possível salvar memória automática:', error.message);
+  }
+}
+
+async function ollamaChat(model, messages, memories = []) {
   const base = getOllamaUrl();
   const url = `${base}/api/chat`;
 
+  const memoryContext = formatMemoryContext(memories);
   const systemMessage = {
     role: 'system',
     content: [
@@ -101,7 +134,7 @@ async function ollamaChat(model, messages) {
       'Ao gerar código, use blocos Markdown.',
       'Responda diretamente ao pedido e evite explicações desnecessárias.',
       'Não invente informações nem afirme ter executado ações que não executou.'
-    ].join(' ')
+    ].join(' ') + (memoryContext ? `\\n\\n${memoryContext}` : '')
   };
 
   const validMessages = messages
@@ -310,6 +343,9 @@ router.post('/', async (req, res, next) => {
 
     insertedUserMessageId = inserted.rows[0]?.id;
 
+    await saveAutomaticMemory(req.user.id, message);
+    const memories = await getUserMemories(req.user.id);
+
     const history = await pool.query(
       `SELECT role, content
        FROM messages
@@ -324,7 +360,7 @@ router.post('/', async (req, res, next) => {
     let answer;
 
     try {
-      answer = await ollamaChat(model, orderedHistory);
+      answer = await ollamaChat(model, orderedHistory, memories);
     } catch (error) {
       console.error('[Syntra/Chat] Falha ao gerar resposta:', {
         conversationId,
@@ -459,12 +495,13 @@ router.post('/conversations/:id/regenerate', async (req, res, next) => {
     );
 
     const orderedHistory = history.rows.reverse();
+    const memories = await getUserMemories(req.user.id);
     const model = own.rows[0].model || getDefaultModel();
 
     let answer;
 
     try {
-      answer = await ollamaChat(model, orderedHistory);
+      answer = await ollamaChat(model, orderedHistory, memories);
     } catch (error) {
       console.error('[Syntra/Chat] Falha ao regenerar resposta:', {
         conversationId,

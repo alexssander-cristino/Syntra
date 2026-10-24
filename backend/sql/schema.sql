@@ -33,3 +33,17 @@ CREATE INDEX IF NOT EXISTS idx_conversations_user_archived_updated
   ON conversations(user_id, archived_at, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_messages_conversation_created
   ON messages(conversation_id, created_at ASC);
+
+
+CREATE TABLE IF NOT EXISTS user_memories (
+  id BIGSERIAL PRIMARY KEY,
+  user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  content VARCHAR(500) NOT NULL CHECK (char_length(trim(content)) >= 2),
+  source VARCHAR(20) NOT NULL DEFAULT 'manual' CHECK (source IN ('manual', 'auto')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_memories_user_content
+  ON user_memories (user_id, lower(content));
+CREATE INDEX IF NOT EXISTS idx_user_memories_user_updated
+  ON user_memories (user_id, updated_at DESC);
