@@ -1,15 +1,5 @@
 import jwt from 'jsonwebtoken';
 
-function removeTrailingSlashes(value) {
-  let result = value.trim();
-
-  while (result.endsWith('/')) {
-    result = result.slice(0, -1);
-  }
-
-  return result;
-}
-
 function readCookie(req, name) {
   for (const part of (req.headers.cookie || '').split(';')) {
     const separator = part.indexOf('=');
@@ -53,10 +43,11 @@ export function requireAuth(req, res, next) {
       'http://localhost:5173,http://127.0.0.1:5173'
     )
       .split(',')
-      .map(value => removeTrailingSlashes(value))
+      .map(value => value.trim().replace(/\/+$/, ''))
       .filter(Boolean);
 
-    const origin = removeTrailingSlashes(String(req.get('Origin') || ''));
+    const origin = String(req.get('Origin') || '')
+      .replace(/\/+$/, '');
 
     if (
       !origin ||

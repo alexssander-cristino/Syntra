@@ -316,7 +316,7 @@ function SettingsModal({
 
           <select
             value={model}
-            onChange={e => void onModel(e.target.value)}
+            onChange={e => onModel(e.target.value)}
           >
             {models.length === 0 && (
               <option value={model}>
@@ -377,7 +377,7 @@ function SettingsModal({
           <button
             type="button"
             className="secondary full"
-            onClick={() => void onExportData()}
+            onClick={onExportData}
             disabled={privacyBusy}
           >
             {privacyBusy
@@ -390,7 +390,7 @@ function SettingsModal({
           <button
             type="button"
             className="secondary full privacy-delete-button"
-            onClick={() => void onDeleteAccount()}
+            onClick={onDeleteAccount}
             disabled={privacyBusy}
           >
             <UserX size={17} />
