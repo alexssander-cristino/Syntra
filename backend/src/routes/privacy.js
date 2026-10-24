@@ -39,6 +39,14 @@ router.get('/export', async (req, res, next) => {
       [req.user.id]
     );
 
+    const memoriesResult = await pool.query(
+      `SELECT id, content, source, created_at, updated_at
+       FROM user_memories
+       WHERE user_id = $1
+       ORDER BY created_at ASC, id ASC`,
+      [req.user.id]
+    );
+
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader(
       'Content-Disposition',
@@ -49,7 +57,8 @@ router.get('/export', async (req, res, next) => {
       exportedAt: new Date().toISOString(),
       user: userResult.rows[0],
       conversations: conversationsResult.rows,
-      messages: messagesResult.rows
+      messages: messagesResult.rows,
+      memories: memoriesResult.rows
     });
   } catch (error) {
     return next(error);
