@@ -1342,7 +1342,7 @@ export default function App() {
             >
               {c.is_pinned && <Pin size={13} className="pinned-indicator" />}
               <MessageSquare size={16} />
-              <span>{c.title || 'Nova conversa'}</span>
+              <span className="conversation-title">{c.title || 'Nova conversa'}</span>
               <span className="conversation-actions">
                 <span className="delete-conv" role="button" tabIndex={0}
                   aria-label={c.is_pinned ? 'Desafixar conversa' : 'Fixar conversa'}
