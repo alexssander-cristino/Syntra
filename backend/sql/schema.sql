@@ -27,5 +27,9 @@ CREATE TABLE IF NOT EXISTS messages (
 
 CREATE INDEX IF NOT EXISTS idx_conversations_user_updated
   ON conversations(user_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_conversations_user_pinned_updated
+  ON conversations(user_id, is_pinned DESC, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_conversations_user_archived_updated
+  ON conversations(user_id, archived_at, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_messages_conversation_created
   ON messages(conversation_id, created_at ASC);
