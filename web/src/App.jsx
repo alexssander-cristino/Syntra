@@ -700,7 +700,6 @@ export default function App() {
     }
 
     let cancelled = false;
-    const controller = new AbortController();
     const timer = window.setTimeout(async () => {
       try {
         const params = new URLSearchParams();
@@ -708,7 +707,6 @@ export default function App() {
         if (showArchived) params.set('archived', 'true');
         const suffix = params.toString();
         const data = await api(`/conversations${suffix ? `?${suffix}` : ''}`, {
-          signal: controller.signal
         });
         if (!cancelled) setVisibleConversations(data.conversations || []);
       } catch (err) {
@@ -721,7 +719,6 @@ export default function App() {
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
-      controller.abort();
     };
   }, [token, conversationSearch, showArchived, conversations]);
 
@@ -1345,7 +1342,7 @@ export default function App() {
             >
               {c.is_pinned && <Pin size={13} className="pinned-indicator" />}
               <MessageSquare size={16} />
-              <span>{c.title || 'Nova conversa'}</span>
+              <span className="conversation-title">{c.title || 'Nova conversa'}</span>
               <span className="conversation-actions">
                 <span className="delete-conv" role="button" tabIndex={0}
                   aria-label={c.is_pinned ? 'Desafixar conversa' : 'Fixar conversa'}

@@ -1595,3 +1595,89 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
     animation: none;
   }
 }
+
+
+/* Conversation search and organization */
+.conversation-tools {
+  display: grid;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.conversation-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 0 10px;
+  min-height: 38px;
+  color: var(--muted);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+
+.conversation-search:focus-within {
+  border-color: var(--purple);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--purple) 15%, transparent);
+}
+
+.conversation-search input {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  padding: 8px 0;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  outline: 0;
+  font: inherit;
+  font-size: var(--fs-sm);
+}
+
+.conversation-search button,
+.archive-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  color: var(--text-soft);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.conversation-search button { padding: 3px; }
+
+.archive-toggle {
+  justify-content: flex-start;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  font-size: var(--fs-sm);
+}
+
+.archive-toggle:hover,
+.archive-toggle.active {
+  color: var(--text);
+  background: var(--purple-soft);
+}
+
+.conversation-actions {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  margin-left: auto;
+}
+
+.conversation-actions .delete-conv { opacity: 0; }
+.conversation-item:hover .conversation-actions .delete-conv,
+.conversation-item.selected .conversation-actions .delete-conv,
+.conversation-actions .delete-conv:focus-visible { opacity: 0.78; }
+.conversation-actions .delete-conv:hover { color: var(--purple); opacity: 1; }
+.conversation-item > .pinned-indicator { flex: 0 0 auto; color: var(--purple); }
+
+@media (hover: none) {
+  .conversation-actions .delete-conv { opacity: 0.72; }
+}
+
+.conversation-item .conversation-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

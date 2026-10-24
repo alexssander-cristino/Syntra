@@ -138,6 +138,9 @@ class _ChatPageState extends State<ChatPage> {
 
   List<Map<String, dynamic>> conversations = [];
   List<Map<String, dynamic>> messages = [];
+  final searchConversationsInput = TextEditingController();
+  Timer? _searchDebounce;
+  bool showArchived = false;
   List<String> models = [];
 
   String? conversationId;
@@ -162,6 +165,8 @@ class _ChatPageState extends State<ChatPage> {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
+    searchConversationsInput.dispose();
     input.dispose();
     nameInput.dispose();
     emailInput.dispose();
@@ -280,6 +285,9 @@ class _ChatPageState extends State<ChatPage> {
     token = null;
     user = null;
     conversationId = null;
+    _searchDebounce?.cancel();
+    searchConversationsInput.clear();
+    showArchived = false;
     conversations = [];
     messages = [];
     models = [];
@@ -457,7 +465,16 @@ class _ChatPageState extends State<ChatPage> {
 
   Future<void> _loadConversations() async {
     try {
-      final data = await _request('/conversations');
+      final query = searchConversationsInput.text.trim();
+      final uri = Uri.parse('$normalizedApiBase/conversations').replace(
+        queryParameters: {
+          if (query.isNotEmpty) 'q': query,
+          if (showArchived) 'archived': 'true',
+        },
+      );
+      final data = await _request(
+        uri.toString().replaceFirst('$normalizedApiBase', ''),
+      );
       final raw = data['conversations'];
 
       final loaded = raw is List
@@ -470,12 +487,12 @@ class _ChatPageState extends State<ChatPage> {
       if (!mounted) return;
 
       String? nextId = conversationId;
-
       final exists = nextId != null &&
           loaded.any((c) => c['id'].toString() == nextId);
 
-      if (!exists) {
-        nextId = loaded.isNotEmpty ? loaded.first['id'].toString() : null;
+      // Pesquisa e arquivo só filtram a lista; não trocam a conversa aberta.
+      if (nextId == null && query.isEmpty && !showArchived && loaded.isNotEmpty) {
+        nextId = loaded.first['id'].toString();
       }
 
       setState(() {
@@ -483,9 +500,9 @@ class _ChatPageState extends State<ChatPage> {
         conversationId = nextId;
       });
 
-      if (nextId != null) {
+      if (nextId != null && exists) {
         await _loadMessages();
-      } else {
+      } else if (nextId == null) {
         setState(() => messages = []);
       }
     } catch (e) {
@@ -494,6 +511,107 @@ class _ChatPageState extends State<ChatPage> {
       setState(() {
         error = 'Erro ao carregar conversas: ${_errorMessage(e)}';
       });
+    }
+  }
+
+  void _onConversationSearchChanged(String _) {
+    setState(() {});
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 300), () {
+      if (mounted) _loadConversations();
+    });
+  }
+
+  Future<void> _updateConversation(String id, Map<String, dynamic> changes) async {
+    try {
+      final data = await _request(
+        '/conversations/${Uri.encodeComponent(id)}',
+        method: 'PATCH',
+        body: changes,
+      );
+      final updated = data['conversation'];
+      if (updated is! Map) throw Exception('A API não retornou a conversa atualizada.');
+      if (!mounted) return;
+      setState(() {
+        conversations = conversations.map((c) =>
+          c['id'].toString() == id ? {...c, ...Map<String, dynamic>.from(updated)} : c
+        ).toList();
+      });
+      if (changes['archived'] == true && conversationId == id) {
+        final fallbackCandidates = conversations.where((c) => c['id'].toString() != id && c['archived_at'] == null).toList();
+        final fallback = fallbackCandidates.isNotEmpty ? fallbackCandidates.first : null;
+        setState(() {
+          conversationId = fallback?['id']?.toString();
+          messages = [];
+        });
+        if (conversationId != null) await _loadMessages();
+      }
+      await _loadConversations();
+    } catch (e) {
+      if (mounted) setState(() => error = _errorMessage(e));
+    }
+  }
+
+  Future<void> _renameConversation(Map<String, dynamic> conversation) async {
+    final controller = TextEditingController(text: conversation['title']?.toString() ?? 'Nova conversa');
+    final title = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Renomear conversa'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLength: 120,
+          decoration: const InputDecoration(labelText: 'Título da conversa'),
+          onSubmitted: (value) => Navigator.pop(dialogContext, value),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancelar')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, controller.text), child: const Text('Salvar')),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (title == null) return;
+    if (title.trim().isEmpty) {
+      if (mounted) setState(() => error = 'O título não pode ficar vazio.');
+      return;
+    }
+    await _updateConversation(conversation['id'].toString(), {'title': title.trim()});
+  }
+
+  Future<void> _deleteConversation(Map<String, dynamic> conversation) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Excluir conversa?'),
+        content: const Text('Esta ação exclui permanentemente a conversa e suas mensagens.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancelar')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Excluir'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final id = conversation['id'].toString();
+    try {
+      await _request('/conversations/${Uri.encodeComponent(id)}', method: 'DELETE');
+      if (!mounted) return;
+      setState(() {
+        conversations.removeWhere((c) => c['id'].toString() == id);
+        if (conversationId == id) {
+          conversationId = conversations.isNotEmpty ? conversations.first['id'].toString() : null;
+          messages = [];
+        }
+      });
+      await _loadConversations();
+      if (conversationId != null) await _loadMessages();
+    } catch (e) {
+      if (mounted) setState(() => error = _errorMessage(e));
     }
   }
 
@@ -847,26 +965,80 @@ class _ChatPageState extends State<ChatPage> {
                   ],
                 ),
               ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                child: TextField(
+                  controller: searchConversationsInput,
+                  onChanged: _onConversationSearchChanged,
+                  decoration: InputDecoration(
+                    hintText: 'Pesquisar histórico',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: searchConversationsInput.text.isEmpty
+                        ? null
+                        : IconButton(
+                            tooltip: 'Limpar pesquisa',
+                            onPressed: () {
+                              searchConversationsInput.clear();
+                              _loadConversations();
+                              setState(() {});
+                            },
+                            icon: const Icon(Icons.close),
+                          ),
+                    border: const OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: SegmentedButton<bool>(
+                  segments: const [
+                    ButtonSegment(value: false, label: Text('Recentes'), icon: Icon(Icons.chat_bubble_outline)),
+                    ButtonSegment(value: true, label: Text('Arquivadas'), icon: Icon(Icons.archive_outlined)),
+                  ],
+                  selected: {showArchived},
+                  onSelectionChanged: (selection) {
+                    setState(() => showArchived = selection.first);
+                    _loadConversations();
+                  },
+                ),
+              ),
+              const SizedBox(height: 8),
               Expanded(
                 child: ListView(
                   children: conversations.map((c) {
                     final id = c['id'].toString();
+                    final pinned = c['is_pinned'] == true;
 
                     return ListTile(
-                      leading: const Icon(Icons.chat_bubble_outline),
+                      leading: Icon(pinned ? Icons.push_pin : Icons.chat_bubble_outline, color: pinned ? purple : null),
                       title: Text(
                         c['title']?.toString() ?? 'Nova conversa',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                       selected: id == conversationId,
+                      trailing: PopupMenuButton<String>(
+                        tooltip: 'Organizar conversa',
+                        onSelected: (action) {
+                          if (action == 'rename') _renameConversation(c);
+                          if (action == 'pin') _updateConversation(id, {'is_pinned': !pinned});
+                          if (action == 'archive') _updateConversation(id, {'archived': !showArchived});
+                          if (action == 'delete') _deleteConversation(c);
+                        },
+                        itemBuilder: (context) => [
+                          PopupMenuItem(value: 'rename', child: const ListTile(leading: Icon(Icons.edit_outlined), title: Text('Renomear'), contentPadding: EdgeInsets.zero)),
+                          PopupMenuItem(value: 'pin', child: ListTile(leading: Icon(pinned ? Icons.push_pin_outlined : Icons.push_pin), title: Text(pinned ? 'Desafixar' : 'Fixar'), contentPadding: EdgeInsets.zero)),
+                          PopupMenuItem(value: 'archive', child: ListTile(leading: Icon(showArchived ? Icons.unarchive_outlined : Icons.archive_outlined), title: Text(showArchived ? 'Restaurar' : 'Arquivar'), contentPadding: EdgeInsets.zero)),
+                          const PopupMenuItem(value: 'delete', child: ListTile(leading: Icon(Icons.delete_outline), title: Text('Excluir'), contentPadding: EdgeInsets.zero)),
+                        ],
+                      ),
                       onTap: () {
                         setState(() {
                           conversationId = id;
                           messages = [];
                           error = null;
                         });
-
                         Navigator.pop(context);
                         _loadMessages();
                       },
