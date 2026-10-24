@@ -262,6 +262,7 @@ function SettingsModal({
   onLogout,
   onExportData,
   onDeleteAccount,
+  onManageMemory,
   privacyBusy
 }) {
   useEffect(() => {
@@ -366,6 +367,16 @@ function SettingsModal({
         </div>
 
         <div className="privacy-settings">
+          <button
+            type="button"
+            className="secondary full"
+            onClick={onManageMemory}
+            disabled={privacyBusy}
+          >
+            <Sparkles size={17} />
+            Memória contextual
+          </button>
+
           <div className="privacy-settings-heading">
             <ShieldCheck size={19} />
 
@@ -574,6 +585,91 @@ function Message({
   );
 }
 
+function MemoryModal({ memories, onClose, onAdd, onDelete, onClear, busy, draft, onDraft }) {
+  const [error, setError] = useState('');
+
+  async function add(e) {
+    e.preventDefault();
+    setError('');
+    try {
+      await onAdd();
+    } catch (err) {
+      setError(err.message || 'Não foi possível salvar a memória.');
+    }
+  }
+
+  async function remove(id) {
+    if (!window.confirm('Excluir esta memória?')) return;
+    setError('');
+    try {
+      await onDelete(id);
+    } catch (err) {
+      setError(err.message || 'Não foi possível excluir a memória.');
+    }
+  }
+
+  async function clearAll() {
+    if (!memories.length || !window.confirm('Apagar todas as memórias salvas?')) return;
+    setError('');
+    try {
+      await onClear();
+    } catch (err) {
+      setError(err.message || 'Não foi possível apagar as memórias.');
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" onMouseDown={e => {
+      if (e.target === e.currentTarget && !busy) onClose();
+    }}>
+      <section className="settings-modal memory-modal" role="dialog" aria-modal="true" aria-label="Memória contextual">
+        <div className="modal-heading">
+          <div>
+            <h2>Memória contextual</h2>
+            <p className="muted">O Syntra usa estas informações para personalizar respostas futuras.</p>
+          </div>
+          <button type="button" className="icon-button" onClick={onClose} disabled={busy} aria-label="Fechar"><X /></button>
+        </div>
+
+        <form className="memory-add-form" onSubmit={add}>
+          <label className="setting-label">
+            Adicionar memória
+            <textarea value={draft} onChange={e => onDraft(e.target.value)} maxLength={500} rows={3} placeholder="Ex.: Prefiro respostas em português e objetivas." disabled={busy} />
+          </label>
+          <button type="submit" className="primary full" disabled={busy || draft.trim().length < 2}>
+            {busy ? <LoaderCircle size={17} className="spin" /> : <Plus size={17} />}
+            Salvar memória
+          </button>
+        </form>
+
+        {error && <div className="error-box" role="alert"><AlertCircle size={16} /><span>{error}</span></div>}
+
+        <div className="memory-list-heading">
+          <strong>Memórias salvas ({memories.length})</strong>
+          {memories.length > 0 && <button type="button" className="text-button danger-text" onClick={() => void clearAll()} disabled={busy}>Apagar todas</button>}
+        </div>
+
+        <div className="memory-list">
+          {memories.length === 0 ? (
+            <p className="muted">Nenhuma memória salva. Você também pode pedir ao Syntra para lembrar uma preferência ou informação importante.</p>
+          ) : memories.map(memory => (
+            <article className="memory-item" key={memory.id}>
+              <div>
+                <p>{memory.content}</p>
+                <small className="muted">{memory.source === 'auto' ? 'Salva automaticamente' : 'Adicionada por você'}</small>
+              </div>
+              <button type="button" className="icon-button danger" aria-label="Excluir memória" title="Excluir memória" disabled={busy} onClick={() => void remove(memory.id)}><Trash2 size={16} /></button>
+            </article>
+          ))}
+        </div>
+
+        <p className="tiny muted">Não salve senhas, tokens, credenciais ou dados pessoais sensíveis. Memórias ficam vinculadas à sua conta e podem ser apagadas a qualquer momento.</p>
+        <button type="button" className="secondary full" onClick={onClose} disabled={busy}>Concluído</button>
+      </section>
+    </div>
+  );
+}
+
 export default function App() {
   const [auth, setAuth] = useState(null);
   const [authChecking, setAuthChecking] = useState(true);
@@ -616,6 +712,10 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(() => !isMobile());
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [privacyBusy, setPrivacyBusy] = useState(false);
+  const [memoryOpen, setMemoryOpen] = useState(false);
+  const [memories, setMemories] = useState([]);
+  const [memoryDraft, setMemoryDraft] = useState('');
+  const [memoryBusy, setMemoryBusy] = useState(false);
   const [toast, setToast] = useState('');
   const [error, setError] = useState('');
 
@@ -1118,6 +1218,57 @@ export default function App() {
     }
   }
 
+  async function loadMemories() {
+    const data = await api('/memory');
+    setMemories(data.memories || []);
+  }
+
+  async function openMemoryManager() {
+    setSettingsOpen(false);
+    setMemoryOpen(true);
+    try {
+      await loadMemories();
+    } catch (err) {
+      setError(err.message || 'Não foi possível carregar as memórias.');
+    }
+  }
+
+  async function addMemory() {
+    const content = memoryDraft.trim();
+    if (content.length < 2) throw new Error('Escreva uma memória com pelo menos 2 caracteres.');
+    setMemoryBusy(true);
+    try {
+      const data = await api('/memory', {
+        method: 'POST',
+        body: JSON.stringify({ content })
+      });
+      setMemories(old => [data.memory, ...old.filter(item => item.id !== data.memory.id)]);
+      setMemoryDraft('');
+    } finally {
+      setMemoryBusy(false);
+    }
+  }
+
+  async function deleteMemory(id) {
+    setMemoryBusy(true);
+    try {
+      await api(`/memory/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      setMemories(old => old.filter(item => item.id !== id));
+    } finally {
+      setMemoryBusy(false);
+    }
+  }
+
+  async function clearMemories() {
+    setMemoryBusy(true);
+    try {
+      await api('/memory', { method: 'DELETE' });
+      setMemories([]);
+    } finally {
+      setMemoryBusy(false);
+    }
+  }
+
   async function exportMyData() {
     if (privacyBusy) return;
 
@@ -1611,7 +1762,21 @@ export default function App() {
           onLogout={() => void logout()}
           onExportData={() => void exportMyData()}
           onDeleteAccount={() => void deleteMyAccount()}
+          onManageMemory={() => void openMemoryManager()}
           privacyBusy={privacyBusy}
+        />
+      )}
+
+      {memoryOpen && (
+        <MemoryModal
+          memories={memories}
+          onClose={() => setMemoryOpen(false)}
+          onAdd={addMemory}
+          onDelete={deleteMemory}
+          onClear={clearMemories}
+          busy={memoryBusy}
+          draft={memoryDraft}
+          onDraft={setMemoryDraft}
         />
       )}
 

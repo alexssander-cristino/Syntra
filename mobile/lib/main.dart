@@ -815,6 +815,184 @@ class _ChatPageState extends State<ChatPage> {
     });
   }
 
+  Future<void> _openMemorySettings() async {
+    final memoryInput = TextEditingController();
+    var memories = <Map<String, dynamic>>[];
+    var loadingMemories = true;
+    var savingMemory = false;
+    String? memoryError;
+
+    try {
+      final data = await _request('/memory');
+      final raw = data['memories'];
+      if (raw is List) {
+        memories = raw
+            .whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .toList();
+      }
+    } catch (e) {
+      memoryError = _errorMessage(e);
+      loadingMemories = false;
+    }
+
+    if (!mounted) {
+      memoryInput.dispose();
+      return;
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) {
+          Future<void> addMemory() async {
+            final content = memoryInput.text.trim();
+            if (content.length < 2 || savingMemory) return;
+            setDialogState(() {
+              savingMemory = true;
+              memoryError = null;
+            });
+            try {
+              final result = await _request(
+                '/memory',
+                method: 'POST',
+                body: {'content': content},
+              );
+              final raw = result['memory'];
+              if (raw is Map) {
+                final saved = Map<String, dynamic>.from(raw);
+                setDialogState(() {
+                  memories.removeWhere((item) => item['id'].toString() == saved['id'].toString());
+                  memories.insert(0, saved);
+                  memoryInput.clear();
+                });
+              }
+            } catch (e) {
+              setDialogState(() => memoryError = _errorMessage(e));
+            } finally {
+              setDialogState(() => savingMemory = false);
+            }
+          }
+
+          Future<void> removeMemory(String id) async {
+            setDialogState(() {
+              savingMemory = true;
+              memoryError = null;
+            });
+            try {
+              await _request('/memory/${Uri.encodeComponent(id)}', method: 'DELETE');
+              setDialogState(() => memories.removeWhere((item) => item['id'].toString() == id));
+            } catch (e) {
+              setDialogState(() => memoryError = _errorMessage(e));
+            } finally {
+              setDialogState(() => savingMemory = false);
+            }
+          }
+
+          Future<void> clearAll() async {
+            if (memories.isEmpty || savingMemory) return;
+            final confirmed = await showDialog<bool>(
+              context: dialogContext,
+              builder: (confirmContext) => AlertDialog(
+                title: const Text('Apagar todas as memórias?'),
+                content: const Text('Essa ação não pode ser desfeita.'),
+                actions: [
+                  TextButton(onPressed: () => Navigator.pop(confirmContext, false), child: const Text('Cancelar')),
+                  FilledButton(onPressed: () => Navigator.pop(confirmContext, true), child: const Text('Apagar')),
+                ],
+              ),
+            );
+            if (confirmed != true) return;
+            setDialogState(() {
+              savingMemory = true;
+              memoryError = null;
+            });
+            try {
+              await _request('/memory', method: 'DELETE');
+              setDialogState(() => memories.clear());
+            } catch (e) {
+              setDialogState(() => memoryError = _errorMessage(e));
+            } finally {
+              setDialogState(() => savingMemory = false);
+            }
+          }
+
+          return AlertDialog(
+            title: const Text('Memória contextual'),
+            content: SizedBox(
+              width: double.maxFinite,
+              height: 440,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text('O Syntra pode usar estas informações em conversas futuras.'),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: memoryInput,
+                    maxLength: 500,
+                    minLines: 1,
+                    maxLines: 3,
+                    decoration: const InputDecoration(
+                      labelText: 'Nova memória',
+                      hintText: 'Ex.: Prefiro respostas objetivas.',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  FilledButton.icon(
+                    onPressed: savingMemory ? null : addMemory,
+                    icon: const Icon(Icons.add),
+                    label: const Text('Salvar memória'),
+                  ),
+                  if (memoryError != null) ...[
+                    const SizedBox(height: 8),
+                    Text(memoryError!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                  ],
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(child: Text('Memórias salvas (${memories.length})', style: const TextStyle(fontWeight: FontWeight.bold))),
+                      if (memories.isNotEmpty)
+                        TextButton(onPressed: savingMemory ? null : clearAll, child: const Text('Apagar todas')),
+                    ],
+                  ),
+                  Expanded(
+                    child: loadingMemories
+                        ? const Center(child: CircularProgressIndicator())
+                        : memories.isEmpty
+                            ? const Center(child: Text('Nenhuma memória salva.'))
+                            : ListView.builder(
+                                itemCount: memories.length,
+                                itemBuilder: (context, index) {
+                                  final memory = memories[index];
+                                  final id = memory['id'].toString();
+                                  return ListTile(
+                                    contentPadding: EdgeInsets.zero,
+                                    title: Text(memory['content']?.toString() ?? ''),
+                                    subtitle: Text(memory['source'] == 'auto' ? 'Salva automaticamente' : 'Adicionada por você'),
+                                    trailing: IconButton(
+                                      tooltip: 'Excluir memória',
+                                      onPressed: savingMemory ? null : () => removeMemory(id),
+                                      icon: const Icon(Icons.delete_outline),
+                                    ),
+                                  );
+                                },
+                              ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text('Não salve senhas, tokens ou dados sensíveis.', style: Theme.of(context).textTheme.bodySmall),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Concluído')),
+            ],
+          );
+        },
+      ),
+    );
+    memoryInput.dispose();
+  }
+
   Future<void> _openSettings() async {
     await showModalBottomSheet<void>(
       context: context,
@@ -878,6 +1056,15 @@ class _ChatPageState extends State<ChatPage> {
                         },
                 ),
               const SizedBox(height: 20),
+              ListTile(
+                leading: const Icon(Icons.psychology_outlined),
+                title: const Text('Memória contextual'),
+                subtitle: const Text('Ver, adicionar ou apagar informações lembradas'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _openMemorySettings();
+                },
+              ),
               ListTile(
                 leading: const Icon(Icons.logout),
                 title: const Text('Sair da conta'),
