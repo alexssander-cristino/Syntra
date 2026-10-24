@@ -1679,3 +1679,5 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 @media (hover: none) {
   .conversation-actions .delete-conv { opacity: 0.72; }
 }
+
+.conversation-item .conversation-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
