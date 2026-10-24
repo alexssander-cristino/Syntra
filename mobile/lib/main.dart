@@ -512,6 +512,7 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   void _onConversationSearchChanged(String _) {
+    setState(() {});
     _searchDebounce?.cancel();
     _searchDebounce = Timer(const Duration(milliseconds: 300), () {
       if (mounted) _loadConversations();
