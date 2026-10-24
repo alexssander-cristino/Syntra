@@ -1018,6 +1018,14 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
+  Future<void> _openLegalDocument({required bool privacy}) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => LegalDocumentPage(privacy: privacy),
+      ),
+    );
+  }
+
   Widget _authView() {
     return Scaffold(
       body: Stack(
@@ -1124,6 +1132,47 @@ class _ChatPageState extends State<ChatPage> {
                         registering ? 'Já tenho uma conta' : 'Criar uma conta',
                       ),
                     ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Ao utilizar o Syntra, consulte nossos documentos:',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Wrap(
+                      alignment: WrapAlignment.center,
+                      spacing: 4,
+                      runSpacing: 0,
+                      children: [
+                        TextButton(
+                          onPressed: busy
+                              ? null
+                              : () => _openLegalDocument(privacy: false),
+                          child: const Text(
+                            'Termos de Uso',
+                            style: TextStyle(fontSize: 12),
+                          ),
+                        ),
+                        Text(
+                          '·',
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: busy
+                              ? null
+                              : () => _openLegalDocument(privacy: true),
+                          child: const Text(
+                            'Política de Privacidade',
+                            style: TextStyle(fontSize: 12),
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -1147,6 +1196,184 @@ class _ChatPageState extends State<ChatPage> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class LegalDocumentPage extends StatelessWidget {
+  final bool privacy;
+
+  const LegalDocumentPage({super.key, required this.privacy});
+
+  static const Color _legalAccent = Color(0xFFB5A7FF);
+
+  List<({String title, String body})> get _sections {
+    if (privacy) {
+      return const [
+        (
+          title: '1. Responsável pelos dados',
+          body: 'O responsável pelo tratamento dos dados do Syntra deve ser identificado pelo operador do serviço. Os dados de identificação e o e-mail de privacidade precisam ser informados pelo responsável antes da publicação definitiva desta política.',
+        ),
+        (
+          title: '2. Dados tratados',
+          body: 'Podem ser tratados nome, endereço de e-mail, dados de autenticação, mensagens e conversas, modelo de IA selecionado, horários e registros técnicos necessários à segurança, ao diagnóstico e ao funcionamento do serviço.',
+        ),
+        (
+          title: '3. Finalidades',
+          body: 'Os dados são utilizados para criar e proteger contas, autenticar usuários, manter o histórico de conversas, processar solicitações enviadas ao assistente, corrigir falhas, prevenir abusos e cumprir obrigações legais aplicáveis.',
+        ),
+        (
+          title: '4. Inteligência artificial e armazenamento',
+          body: 'As mensagens são processadas pelo modelo de IA configurado para o Syntra. A infraestrutura pode utilizar Ollama e o modelo configurado no servidor. As conversas podem ser armazenadas no banco de dados PostgreSQL utilizado pelo serviço, hospedado no Supabase. Os dados não ficam necessariamente apenas no dispositivo.',
+        ),
+        (
+          title: '5. Compartilhamento',
+          body: 'Fornecedores de infraestrutura podem tratar dados na medida necessária para hospedar e operar o serviço. O operador deve manter identificados os fornecedores efetivamente utilizados, suas funções e eventuais transferências internacionais. O Syntra não deve ser entendido como um serviço que nunca compartilha dados com fornecedores técnicos.',
+        ),
+        (
+          title: '6. Cookies e armazenamento local',
+          body: 'A versão web utiliza cookie de sessão para manter a autenticação e pode armazenar preferências no navegador. O aplicativo móvel utiliza a comunicação com a API para autenticar e acessar os recursos da conta.',
+        ),
+        (
+          title: '7. Segurança e retenção',
+          body: 'São adotadas medidas técnicas e administrativas compatíveis com os riscos, mas nenhum sistema é absolutamente livre de riscos. Os dados são mantidos pelo período necessário às finalidades informadas e às obrigações legais. Backups e registros de segurança podem ter prazos próprios.',
+        ),
+        (
+          title: '8. Direitos do titular',
+          body: 'Nos termos da Lei Geral de Proteção de Dados (LGPD), o titular pode solicitar, conforme aplicável, confirmação do tratamento, acesso, correção, informações sobre compartilhamento, eliminação e outras providências previstas em lei. O responsável pelo serviço deve disponibilizar um canal de contato para esses pedidos.',
+        ),
+        (
+          title: '9. Crianças e adolescentes',
+          body: 'A faixa etária atendida e os procedimentos específicos para crianças e adolescentes devem ser definidos pelo responsável antes da disponibilização do serviço a esse público.',
+        ),
+        (
+          title: '10. Atualizações e contato',
+          body: 'Esta política pode ser atualizada para refletir mudanças no serviço, nos fornecedores ou na legislação. Antes da publicação definitiva, o responsável deve preencher seus dados de identificação e o canal de contato para privacidade.',
+        ),
+      ];
+    }
+
+    return const [
+      (
+        title: '1. Utilização do serviço',
+        body: 'O Syntra oferece uma interface conversacional com inteligência artificial. Ao utilizar o serviço, você deve fornecer informações verdadeiras no cadastro e proteger suas credenciais de acesso.',
+      ),
+      (
+        title: '2. Uso responsável',
+        body: 'Não utilize o serviço para atividades ilícitas, tentar acessar contas de terceiros, explorar vulnerabilidades, prejudicar a infraestrutura ou enviar conteúdo que viole direitos de outras pessoas.',
+      ),
+      (
+        title: '3. Respostas geradas por IA',
+        body: 'As respostas podem conter erros, omissões ou informações desatualizadas. O conteúdo não substitui avaliação profissional quando necessária. Verifique informações relevantes antes de agir com base nelas.',
+      ),
+      (
+        title: '4. Disponibilidade',
+        body: 'O funcionamento depende da disponibilidade da aplicação, do banco de dados e do modelo de IA configurado. Interrupções podem ocorrer para manutenção, segurança ou correção de falhas.',
+      ),
+      (
+        title: '5. Dados pessoais',
+        body: 'O tratamento de dados é descrito na Política de Privacidade. Evite inserir senhas de outros serviços, dados financeiros sensíveis, segredos empresariais ou dados pessoais de terceiros sem necessidade e autorização apropriada.',
+      ),
+      (
+        title: '6. Conta e encerramento',
+        body: 'Você é responsável pela atividade realizada por meio da sua conta e deve proteger suas credenciais. Você pode deixar de utilizar o serviço e, quando o recurso estiver disponível, solicitar a exclusão da conta. A retenção de dados após o encerramento observará a política de privacidade e as obrigações legais aplicáveis.',
+      ),
+      (
+        title: '7. Alterações dos termos',
+        body: 'Os termos podem ser atualizados para refletir mudanças no serviço ou nas exigências legais. A versão atualizada deve ser disponibilizada aos usuários.',
+      ),
+      (
+        title: '8. Responsável e contato',
+        body: 'O responsável pelo serviço e seu canal de contato devem ser informados pelo operador do Syntra antes da publicação definitiva destes termos.',
+      ),
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final title = privacy ? 'Política de Privacidade' : 'Termos de Uso';
+    final theme = Theme.of(context);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(title),
+      ),
+      body: SelectionArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+          children: [
+            Center(
+              child: Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Icon(
+                  privacy ? Icons.shield_outlined : Icons.description_outlined,
+                  color: _legalAccent,
+                  size: 28,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Syntra.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.headlineMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.titleLarge?.copyWith(
+                color: _legalAccent,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Última atualização: 24 de outubro de 2026',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            if (privacy) ...[
+              const SizedBox(height: 18),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Text(
+                  'Aviso: os dados do responsável pelo serviço e o contato de privacidade ainda precisam ser confirmados e preenchidos pelo operador antes da publicação definitiva.',
+                ),
+              ),
+            ],
+            const SizedBox(height: 22),
+            for (final section in _sections) ...[
+              Text(
+                section.title,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: _legalAccent,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                section.body,
+                style: theme.textTheme.bodyMedium?.copyWith(height: 1.55),
+              ),
+              const SizedBox(height: 20),
+            ],
+          ],
+        ),
       ),
     );
   }
