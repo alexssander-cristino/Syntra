@@ -285,6 +285,9 @@ class _ChatPageState extends State<ChatPage> {
     token = null;
     user = null;
     conversationId = null;
+    _searchDebounce?.cancel();
+    searchConversationsInput.clear();
+    showArchived = false;
     conversations = [];
     messages = [];
     models = [];
