@@ -1,3 +1,13 @@
+function removeTrailingSlashes(value) {
+  let result = value.trim();
+
+  while (result.endsWith('/')) {
+    result = result.slice(0, -1);
+  }
+
+  return result;
+}
+
 const API = (
   import.meta.env.VITE_API_URL ||
   'http://localhost:3000/api'
@@ -21,7 +31,7 @@ export async function api(path, { token, ...options } = {}) {
   let response;
 
   try {
-    response = await fetch(`${API}${path}`, {
+    response = await fetch(`${NORMALIZED_API}${path}`, {
       ...options,
       method,
       headers,
