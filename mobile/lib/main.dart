@@ -5,6 +5,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 const apiBase = String.fromEnvironment(
   'API_BASE_URL',
@@ -245,6 +246,10 @@ class _ChatPageState extends State<ChatPage> {
       if (response.statusCode < 200 || response.statusCode >= 300) {
         final message = data['error']?.toString();
 
+        if (response.statusCode == 401 && token != null) {
+          await _clearStoredSession();
+        }
+
         throw Exception(
           message != null && message.isNotEmpty
               ? message
@@ -264,8 +269,69 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
+  static const String _tokenStorageKey = 'syntra_mobile_token';
+  static const String _userStorageKey = 'syntra_mobile_user';
+
+  Future<void> _clearStoredSession() async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.remove(_tokenStorageKey);
+    await preferences.remove(_userStorageKey);
+
+    token = null;
+    user = null;
+    conversationId = null;
+    conversations = [];
+    messages = [];
+    models = [];
+
+    if (mounted) setState(() {});
+  }
+
   Future<void> _restore() async {
-    if (mounted) setState(() => loading = false);
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final savedToken = preferences.getString(_tokenStorageKey);
+      final savedUserJson = preferences.getString(_userStorageKey);
+
+      if (savedToken == null ||
+          savedToken.isEmpty ||
+          savedUserJson == null ||
+          savedUserJson.isEmpty) {
+        await _clearStoredSession();
+        return;
+      }
+
+      final decodedUser = jsonDecode(savedUserJson);
+      if (decodedUser is! Map) {
+        await _clearStoredSession();
+        return;
+      }
+
+      token = savedToken;
+      user = Map<String, dynamic>.from(decodedUser);
+
+      if (mounted) setState(() {});
+
+      // Validate the saved token. A network failure should not erase it;
+      // only an HTTP 401 from the API clears the saved session.
+      final account = await _request('/auth/me');
+      final accountData = account['user'];
+      if (accountData is Map) {
+        user = Map<String, dynamic>.from(accountData);
+        await preferences.setString(_userStorageKey, jsonEncode(user));
+        if (mounted) setState(() {});
+      }
+
+      await _loadModels();
+      await _loadConversations();
+    } catch (e) {
+      // Do not log the user out for temporary network/server failures.
+      if (mounted && token != null) {
+        setState(() => error = _errorMessage(e));
+      }
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
   }
 
   Future<void> _authenticate() async {
@@ -321,6 +387,9 @@ class _ChatPageState extends State<ChatPage> {
       }
 
       final parsedUser = Map<String, dynamic>.from(receivedUser);
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setString(_tokenStorageKey, receivedToken);
+      await preferences.setString(_userStorageKey, jsonEncode(parsedUser));
 
       token = receivedToken;
       user = parsedUser;
@@ -618,15 +687,10 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Future<void> _logout() async {
+    await _clearStoredSession();
     if (!mounted) return;
 
     setState(() {
-      token = null;
-      user = null;
-      messages = [];
-      conversations = [];
-      conversationId = null;
-      models = [];
       error = null;
       busy = false;
       passwordInput.clear();
