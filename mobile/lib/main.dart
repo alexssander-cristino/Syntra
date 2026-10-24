@@ -534,7 +534,8 @@ class _ChatPageState extends State<ChatPage> {
         ).toList();
       });
       if (changes['archived'] == true && conversationId == id) {
-        final fallback = conversations.where((c) => c['id'].toString() != id && c['archived_at'] == null).firstOrNull;
+        final fallbackCandidates = conversations.where((c) => c['id'].toString() != id && c['archived_at'] == null).toList();
+        final fallback = fallbackCandidates.isNotEmpty ? fallbackCandidates.first : null;
         setState(() {
           conversationId = fallback?['id']?.toString();
           messages = [];
