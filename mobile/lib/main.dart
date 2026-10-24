@@ -831,6 +831,7 @@ class _ChatPageState extends State<ChatPage> {
             .map((item) => Map<String, dynamic>.from(item))
             .toList();
       }
+      loadingMemories = false;
     } catch (e) {
       memoryError = _errorMessage(e);
       loadingMemories = false;

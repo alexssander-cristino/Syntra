@@ -134,7 +134,7 @@ async function ollamaChat(model, messages, memories = []) {
       'Ao gerar código, use blocos Markdown.',
       'Responda diretamente ao pedido e evite explicações desnecessárias.',
       'Não invente informações nem afirme ter executado ações que não executou.'
-    ].join(' ') + (memoryContext ? `\\n\\n${memoryContext}` : '')
+    ].join(' ') + (memoryContext ? String.fromCharCode(10, 10) + memoryContext : '')
   };
 
   const validMessages = messages
