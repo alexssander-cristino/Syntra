@@ -37,7 +37,11 @@ import {
   PenLine,
   ShieldCheck,
   Download,
-  UserX
+  UserX,
+  Search,
+  Pin,
+  Archive,
+  Pencil
 } from 'lucide-react';
 
 const isMobile = () =>
@@ -599,6 +603,9 @@ export default function App() {
   }, [theme]);
 
   const [conversations, setConversations] = useState([]);
+  const [visibleConversations, setVisibleConversations] = useState([]);
+  const [conversationSearch, setConversationSearch] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
   const [activeId, setActiveId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [draft, setDraft] = useState('');
@@ -628,6 +635,9 @@ export default function App() {
   const clearAccountData = useCallback(() => {
     setAuth(null);
     setConversations([]);
+    setVisibleConversations([]);
+    setConversationSearch('');
+    setShowArchived(false);
     setMessages([]);
     setActiveId(null);
     setDraft('');
@@ -682,10 +692,44 @@ export default function App() {
     };
   }, []);
 
+  // Pesquisa e filtro de conversas são executados no backend.
+  useEffect(() => {
+    if (!token) {
+      setVisibleConversations([]);
+      return undefined;
+    }
+
+    let cancelled = false;
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      try {
+        const params = new URLSearchParams();
+        if (conversationSearch.trim()) params.set('q', conversationSearch.trim());
+        if (showArchived) params.set('archived', 'true');
+        const suffix = params.toString();
+        const data = await api(`/conversations${suffix ? `?${suffix}` : ''}`, {
+          signal: controller.signal
+        });
+        if (!cancelled) setVisibleConversations(data.conversations || []);
+      } catch (err) {
+        if (!cancelled && err.name !== 'AbortError') {
+          setError(err.message || 'Não foi possível pesquisar conversas.');
+        }
+      }
+    }, 220);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [token, conversationSearch, showArchived, conversations]);
+
   // Carrega conversas e modelos após autenticar.
   useEffect(() => {
     if (!token) {
       setConversations([]);
+      setVisibleConversations([]);
       setModels([]);
       setActiveId(null);
       setMessages([]);
@@ -873,8 +917,41 @@ export default function App() {
 
   async function refreshConversations() {
     const data = await api('/conversations');
-
     setConversations(data.conversations || []);
+  }
+
+  async function organizeConversation(id, patch) {
+    try {
+      const data = await api(`/conversations/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(patch)
+      });
+      setConversations(old => old.map(c => c.id === id ? { ...c, ...data.conversation } : c));
+      setToast(patch.title ? 'Conversa renomeada' : patch.is_pinned !== undefined ? (patch.is_pinned ? 'Conversa fixada' : 'Conversa desafixada') : (patch.archived ? 'Conversa arquivada' : 'Conversa restaurada'));
+      if (patch.archived === true && activeId === id) {
+        const remaining = conversations.find(c => c.id !== id && !c.archived_at);
+        setActiveId(remaining?.id || null);
+        setMessages([]);
+      }
+    } catch (err) {
+      setError(err.message || 'Não foi possível atualizar a conversa.');
+    }
+  }
+
+  function renameConversation(e, conversation) {
+    e.stopPropagation();
+    const title = window.prompt('Novo título da conversa:', conversation.title || 'Nova conversa');
+    if (title === null) return;
+    const cleanTitle = title.trim();
+    if (!cleanTitle) {
+      setError('O título não pode ficar vazio.');
+      return;
+    }
+    if (cleanTitle.length > 120) {
+      setError('O título deve ter no máximo 120 caracteres.');
+      return;
+    }
+    void organizeConversation(conversation.id, { title: cleanTitle });
   }
 
   async function sendMessage(textOverride) {
@@ -1225,53 +1302,85 @@ export default function App() {
           <span>Ctrl K</span>
         </button>
 
-        <div className="side-section-label">Recentes</div>
+        <div className="conversation-tools">
+          <label className="conversation-search">
+            <Search size={16} />
+            <input
+              type="search"
+              value={conversationSearch}
+              onChange={e => setConversationSearch(e.target.value)}
+              placeholder="Pesquisar conversas..."
+              aria-label="Pesquisar conversas por título ou mensagem"
+              maxLength={120}
+            />
+            {conversationSearch && (
+              <button type="button" aria-label="Limpar pesquisa" onClick={() => setConversationSearch('')}>
+                <X size={14} />
+              </button>
+            )}
+          </label>
+          <button
+            type="button"
+            className={`archive-toggle ${showArchived ? 'active' : ''}`}
+            onClick={() => setShowArchived(value => !value)}
+          >
+            <Archive size={15} />
+            {showArchived ? 'Ver recentes' : 'Arquivadas'}
+          </button>
+        </div>
 
-        <nav
-          className="conversation-list"
-          aria-label="Conversas recentes"
-        >
-          {conversations.map(c => (
+        <div className="side-section-label">{showArchived ? 'Arquivadas' : 'Conversas'}</div>
+
+        <nav className="conversation-list" aria-label={showArchived ? 'Conversas arquivadas' : 'Conversas'}>
+          {visibleConversations.map(c => (
             <button
               type="button"
               key={c.id}
-              className={`conversation-item ${
-                activeId === c.id ? 'selected' : ''
-              }`}
+              className={`conversation-item ${activeId === c.id ? 'selected' : ''}`}
               onClick={() => {
                 setActiveId(c.id);
                 setError('');
-
-                if (isMobile()) {
-                  setSidebarOpen(false);
-                }
+                if (isMobile()) setSidebarOpen(false);
               }}
             >
+              {c.is_pinned && <Pin size={13} className="pinned-indicator" />}
               <MessageSquare size={16} />
               <span>{c.title || 'Nova conversa'}</span>
-
-              <span
-                className="delete-conv"
-                role="button"
-                tabIndex={0}
-                aria-label={`Excluir conversa ${c.title || ''}`}
-                onClick={e => void deleteConversation(e, c.id)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    void deleteConversation(e, c.id);
-                  }
-                }}
-                title="Excluir"
-              >
-                <Trash2 size={14} />
+              <span className="conversation-actions">
+                <span className="delete-conv" role="button" tabIndex={0}
+                  aria-label={c.is_pinned ? 'Desafixar conversa' : 'Fixar conversa'}
+                  title={c.is_pinned ? 'Desafixar' : 'Fixar'}
+                  onClick={e => { e.stopPropagation(); void organizeConversation(c.id, { is_pinned: !c.is_pinned }); }}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); void organizeConversation(c.id, { is_pinned: !c.is_pinned }); } }}>
+                  <Pin size={13} />
+                </span>
+                <span className="delete-conv" role="button" tabIndex={0}
+                  aria-label="Renomear conversa" title="Renomear"
+                  onClick={e => renameConversation(e, c)}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); renameConversation(e, c); } }}>
+                  <Pencil size={13} />
+                </span>
+                <span className="delete-conv" role="button" tabIndex={0}
+                  aria-label={showArchived ? 'Restaurar conversa' : 'Arquivar conversa'}
+                  title={showArchived ? 'Restaurar' : 'Arquivar'}
+                  onClick={e => { e.stopPropagation(); void organizeConversation(c.id, { archived: !showArchived }); }}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); void organizeConversation(c.id, { archived: !showArchived }); } }}>
+                  <Archive size={13} />
+                </span>
+                <span className="delete-conv" role="button" tabIndex={0}
+                  aria-label={`Excluir conversa ${c.title || ''}`} title="Excluir"
+                  onClick={e => void deleteConversation(e, c.id)}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); void deleteConversation(e, c.id); } }}>
+                  <Trash2 size={14} />
+                </span>
               </span>
             </button>
           ))}
-
-          {!conversations.length && (
+          {!visibleConversations.length && (
             <p className="tiny muted side-empty">
-              Suas conversas aparecerão aqui.
+              {conversationSearch.trim()
+                ? 'Nenhuma conversa encontrada.'
+                : showArchived ? 'Nenhuma conversa arquivada.' : 'Suas conversas aparecerão aqui.'}
             </p>
           )}
         </nav>
