@@ -72,7 +72,7 @@ const allowedOrigins = (
   'http://localhost:5173,http://127.0.0.1:5173'
 )
   .split(',')
-  .map(origin => origin.trim().replace(/\/+$/, ''))
+  .map(origin => removeTrailingSlashes(origin))
   .filter(Boolean);
 
 app.use(cors({
@@ -81,7 +81,7 @@ app.use(cors({
     // Rotas autenticadas continuam exigindo autenticação.
     if (!origin) return callback(null, true);
 
-    if (allowedOrigins.includes(origin.replace(/\/+$/, ''))) {
+    if (allowedOrigins.includes(removeTrailingSlashes(origin))) {
       return callback(null, true);
     }
 
@@ -214,7 +214,7 @@ app.use((err, _req, res, _next) => {
     return;
   }
 
-  if (err.message === 'Origem não permitida pelo CORS.') {
+  if (err.message === 'Origem não autorizada pelo CORS.') {
     return res.status(403).json({
       error: 'Origem não permitida pelo CORS.',
     });
