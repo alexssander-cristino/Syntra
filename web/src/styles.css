@@ -1681,3 +1681,58 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 }
 
 .conversation-item .conversation-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+
+/* Contextual memory manager */
+.memory-modal {
+  max-height: min(88vh, 820px);
+  overflow-y: auto;
+}
+.memory-add-form {
+  display: grid;
+  gap: 12px;
+  margin: 18px 0;
+}
+.memory-add-form textarea {
+  width: 100%;
+  resize: vertical;
+  border: 1px solid var(--border, rgba(148, 163, 184, .28));
+  border-radius: 12px;
+  padding: 12px;
+  color: inherit;
+  background: var(--input-bg, transparent);
+  font: inherit;
+}
+.memory-list-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 20px 0 10px;
+}
+.memory-list {
+  display: grid;
+  gap: 8px;
+  max-height: 280px;
+  overflow-y: auto;
+  margin-bottom: 16px;
+}
+.memory-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border, rgba(148, 163, 184, .24));
+  border-radius: 12px;
+}
+.memory-item p {
+  margin: 0 0 6px;
+  overflow-wrap: anywhere;
+}
+.memory-item small {
+  font-size: 12px;
+}
+.danger-text {
+  color: #e05d6f;
+}
