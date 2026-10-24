@@ -214,7 +214,7 @@ app.use((err, _req, res, _next) => {
     return;
   }
 
-  if (err.message === 'Origem não permitida pelo CORS.') {
+  if (err.message === 'Origem não autorizada pelo CORS.') {
     return res.status(403).json({
       error: 'Origem não permitida pelo CORS.',
     });
