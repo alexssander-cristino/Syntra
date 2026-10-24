@@ -31,7 +31,7 @@ export async function api(path, { token, ...options } = {}) {
   let response;
 
   try {
-    response = await fetch(`${NORMALIZED_API}${path}`, {
+    response = await fetch(`${API}${path}`, {
       ...options,
       method,
       headers,
