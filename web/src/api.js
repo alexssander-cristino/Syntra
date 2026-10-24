@@ -8,10 +8,10 @@ function removeTrailingSlashes(value) {
   return result;
 }
 
-const API = (
+const API = removeTrailingSlashes(
   import.meta.env.VITE_API_URL ||
   'http://localhost:3000/api'
-).replace(/\/+$/, '');
+);
 
 export async function api(path, { token, ...options } = {}) {
   const method = String(options.method || 'GET').toUpperCase();
