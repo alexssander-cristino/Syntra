@@ -10,6 +10,7 @@ import authRoutes from './routes/auth.js';
 import conversationRoutes from './routes/conversations.js';
 import chatRoutes from './routes/chat.js';
 import { pool } from './db.js';
+import privacyRoutes from './routes/privacy.js';
 
 // =====================================================
 // CONFIGURAÇÕES
@@ -71,33 +72,30 @@ const allowedOrigins = (
   'http://localhost:5173,http://127.0.0.1:5173'
 )
   .split(',')
-  .map(removeTrailingSlashes)
+  .map(origin => origin.trim().replace(/\/+$/, ''))
   .filter(Boolean);
 
-app.use(
-  cors({
-    origin(origin, callback) {
-      // Permite requisições sem Origin, como chamadas entre servidores.
-      if (!origin) {
-        return callback(null, true);
-      }
+app.use(cors({
+  origin(origin, callback) {
+    // Permite clientes sem Origin, como chamadas locais de ferramentas.
+    // Rotas autenticadas continuam exigindo autenticação.
+    if (!origin) return callback(null, true);
 
-      const normalizedOrigin = removeTrailingSlashes(origin);
+    if (allowedOrigins.includes(origin.replace(/\/+$/, ''))) {
+      return callback(null, true);
+    }
 
-      if (allowedOrigins.includes(normalizedOrigin)) {
-        return callback(null, true);
-      }
-
-      return callback(
-        new Error('Origem não permitida pelo CORS.')
-      );
-    },
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: false,
-    optionsSuccessStatus: 204,
-  })
-);
+    return callback(new Error('Origem não autorizada pelo CORS.'));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-Syntra-Auth-Mode',
+    'X-Syntra-CSRF'
+  ]
+}));
 
 // =====================================================
 // MIDDLEWARES
@@ -154,6 +152,7 @@ app.get('/', (_req, res) => {
   });
 });
 
+app.use('/api/privacy', privacyRoutes);
 // =====================================================
 // HEALTH CHECK
 // =====================================================
