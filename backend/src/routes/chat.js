@@ -16,6 +16,16 @@ const OLLAMA_TIMEOUT_MS = 120000;
 const HISTORY_LIMIT = 30;
 const MAX_MODEL_NAME_LENGTH = 120;
 
+function removeTrailingSlashes(value) {
+  let result = value;
+
+  while (result.endsWith('/')) {
+    result = result.slice(0, -1);
+  }
+
+  return result;
+}
+
 function getOllamaUrl() {
   const value = process.env.OLLAMA_URL || DEFAULT_OLLAMA_URL;
 
@@ -32,7 +42,7 @@ function getOllamaUrl() {
     throw new Error('OLLAMA_URL deve utilizar HTTP ou HTTPS.');
   }
 
-  return url.toString().replace(/\/+$/, '');
+  return removeTrailingSlashes(url.toString());
 }
 
 function getDefaultModel() {
