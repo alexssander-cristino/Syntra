@@ -1,5 +1,15 @@
 import jwt from 'jsonwebtoken';
 
+function removeTrailingSlashes(value) {
+  let result = value.trim();
+
+  while (result.endsWith('/')) {
+    result = result.slice(0, -1);
+  }
+
+  return result;
+}
+
 function readCookie(req, name) {
   for (const part of (req.headers.cookie || '').split(';')) {
     const separator = part.indexOf('=');
