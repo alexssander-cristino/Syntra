@@ -67,7 +67,8 @@ app.use(helmet());
 // =====================================================
 
 const allowedOrigins = (
-  process.env.CORS_ORIGIN || 'http://localhost:5173'
+  process.env.CORS_ORIGIN ||
+  'http://localhost:5173,http://127.0.0.1:5173'
 )
   .split(',')
   .map(removeTrailingSlashes)
