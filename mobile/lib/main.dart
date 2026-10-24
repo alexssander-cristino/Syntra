@@ -720,7 +720,7 @@ class _ChatPageState extends State<ChatPage> {
                 const Text('Nenhum modelo disponível no momento.')
               else
                 DropdownButtonFormField<String>(
-                  value: models.contains(model) ? model : models.first,
+                  initialValue: models.contains(model) ? model : models.first,
                   decoration: const InputDecoration(),
                   items: models
                       .map(
