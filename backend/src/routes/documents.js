@@ -57,8 +57,8 @@ export async function retrieveDocumentContext(userId, prompt, limit = 4) {
   const uniqueWords = [...new Set(words)].slice(0, 8);
   if (!uniqueWords.length) return '';
   try {
-    const patterns = uniqueWords.map(word => `%${word.replace(/[%_\\]/g, '\\$&')}%`);
-    const clauses = patterns.map((_, index) => `content ILIKE $${index + 2} ESCAPE E'\\\\'`);
+    const patterns = uniqueWords.map(word => `%${word}%`);
+    const clauses = patterns.map((_, index) => `content ILIKE ${index + 2}`);
     const limitParam = patterns.length + 2;
     const sql = `SELECT filename, content FROM documents WHERE user_id = $1 AND (${clauses.join(' OR ')}) ORDER BY created_at DESC LIMIT $${limitParam}`;
     const result = await pool.query(sql, [userId, ...patterns, limit]);

@@ -405,6 +405,9 @@ function SettingsModal({
                 <p className="tiny muted">
                   Avaliações positivas: {metrics.positive_ratings} · negativas: {metrics.negative_ratings}
                 </p>
+                <p className="tiny muted">
+                  Tempo médio medido: {metrics.average_generation_ms == null ? 'sem dados ainda' : `${(metrics.average_generation_ms / 1000).toFixed(1)} s`} · tokens de saída estimados: {metrics.estimated_output_tokens}
+                </p>
               </div>
             </div>
           )}

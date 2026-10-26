@@ -1168,35 +1168,40 @@ class _ChatPageState extends State<ChatPage> {
     var busyDocuments = true;
     String? documentsError;
 
-    Future<void> refresh(StateSetter update) async {
-      try {
-        final results = await Future.wait([
-          _request('/documents'),
-          _request('/metrics'),
-        ]);
-        final raw = results[0]['documents'];
-        documents = raw is List
-            ? raw.whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList()
-            : <Map<String, dynamic>>[];
-        final rawMetrics = results[1]['metrics'];
-        metrics = rawMetrics is Map ? Map<String, dynamic>.from(rawMetrics) : null;
-        documentsError = null;
-      } catch (e) {
-        documentsError = _errorMessage(e);
-      } finally {
-        busyDocuments = false;
-        update(() {});
-      }
+    try {
+      final results = await Future.wait([_request('/documents'), _request('/metrics')]);
+      final raw = results[0]['documents'];
+      documents = raw is List
+          ? raw.whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList()
+          : <Map<String, dynamic>>[];
+      final rawMetrics = results[1]['metrics'];
+      metrics = rawMetrics is Map ? Map<String, dynamic>.from(rawMetrics) : null;
+      busyDocuments = false;
+    } catch (e) {
+      documentsError = _errorMessage(e);
+      busyDocuments = false;
     }
 
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (ctx, update) {
-          if (busyDocuments && documents.isEmpty) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (ctx.mounted && busyDocuments) refresh(update);
-            });
+          Future<void> refresh() async {
+            update(() { busyDocuments = true; });
+            try {
+              final results = await Future.wait([_request('/documents'), _request('/metrics')]);
+              final raw = results[0]['documents'];
+              documents = raw is List
+                  ? raw.whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList()
+                  : <Map<String, dynamic>>[];
+              final rawMetrics = results[1]['metrics'];
+              metrics = rawMetrics is Map ? Map<String, dynamic>.from(rawMetrics) : null;
+              documentsError = null;
+            } catch (e) {
+              documentsError = _errorMessage(e);
+            } finally {
+              update(() { busyDocuments = false; });
+            }
           }
 
           Future<void> importDocument() async {
@@ -1214,11 +1219,8 @@ class _ChatPageState extends State<ChatPage> {
               final content = utf8.decode(bytes, allowMalformed: false).trim();
               if (content.isEmpty) throw Exception('O documento está vazio.');
               update(() { busyDocuments = true; documentsError = null; });
-              await _request('/documents', method: 'POST', body: {
-                'filename': file.name,
-                'content': content,
-              });
-              await refresh(update);
+              await _request('/documents', method: 'POST', body: {'filename': file.name, 'content': content});
+              await refresh();
             } catch (e) {
               update(() { busyDocuments = false; documentsError = _errorMessage(e); });
             }
@@ -1228,7 +1230,7 @@ class _ChatPageState extends State<ChatPage> {
             update(() { busyDocuments = true; documentsError = null; });
             try {
               await _request('/documents/${Uri.encodeComponent(id)}', method: 'DELETE');
-              await refresh(update);
+              await refresh();
             } catch (e) {
               update(() { busyDocuments = false; documentsError = _errorMessage(e); });
             }
@@ -1263,7 +1265,7 @@ class _ChatPageState extends State<ChatPage> {
                     if (metrics != null)
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Text('Conversas: ${metrics!['conversations']} · Mensagens: ${metrics!['messages']} · Documentos: ${metrics!['documents']}'),
+                        child: Text('Conversas: ${metrics!['conversations']} · Mensagens: ${metrics!['messages']} · Documentos: ${metrics!['documents']}\nTempo médio: ${metrics!['average_generation_ms'] == null ? 'sem dados' : (int.parse(metrics!['average_generation_ms'].toString()) / 1000).toStringAsFixed(1) + ' s'} · Tokens estimados: ${metrics!['estimated_output_tokens']}'),
                       ),
                     if (documents.isEmpty && !busyDocuments)
                       const Padding(
@@ -1623,10 +1625,20 @@ class _ChatPageState extends State<ChatPage> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              SelectableText(
-                                message['content']?.toString() ?? '',
-                                style: const TextStyle(fontSize: 14, height: 1.5),
-                              ),
+                              if (message['streaming'] == true && (message['content']?.toString() ?? '').isEmpty)
+                                const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+                                    SizedBox(width: 8),
+                                    Text('Syntra está pensando...'),
+                                  ],
+                                )
+                              else
+                                SelectableText(
+                                  message['content']?.toString() ?? '',
+                                  style: const TextStyle(fontSize: 14, height: 1.5),
+                                ),
                               const SizedBox(height: 4),
                               Wrap(
                                 spacing: 0,
