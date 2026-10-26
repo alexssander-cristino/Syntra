@@ -393,6 +393,8 @@ router.post('/', async (req, res, next) => {
         }
       }
 
+      if (abortController.signal.aborted) return;
+
       const isTimeout =
         error.name === 'TimeoutError' ||
         error.name === 'AbortError' ||
@@ -603,6 +605,8 @@ router.post('/conversations/:id/regenerate', async (req, res, next) => {
         model,
         error: getErrorMessage(error)
       });
+
+      if (abortController.signal.aborted) return;
 
       const isTimeout =
         error.name === 'TimeoutError' ||
