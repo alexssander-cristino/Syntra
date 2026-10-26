@@ -1081,6 +1081,12 @@ export default function App() {
         if (err.name === 'AbortError') {
           setDraft(text);
           setToast('Geração interrompida');
+          try {
+            const refreshed = await api(`/conversations/${encodeURIComponent(activeId)}/messages`);
+            setMessages(refreshed.messages || []);
+          } catch (reloadError) {
+            console.error('Não foi possível recarregar as mensagens:', reloadError);
+          }
         } else {
           setError(err.message);
           setDraft(text);
@@ -1199,11 +1205,8 @@ export default function App() {
         }
       );
 
-      setMessages(old => [
-        ...old.slice(0, -1),
-        data.message
-      ]);
-
+      const refreshed = await api(`/conversations/${encodeURIComponent(activeId)}/messages`);
+      setMessages(refreshed.messages || []);
       await refreshConversations();
     } catch (err) {
       if (err.name === 'AbortError') {
