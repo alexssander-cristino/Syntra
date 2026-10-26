@@ -41,7 +41,10 @@ import {
   Search,
   Pin,
   Archive,
-  Pencil
+  Pencil,
+  ThumbsUp,
+  ThumbsDown,
+  Square
 } from 'lucide-react';
 
 const isMobile = () =>
@@ -449,6 +452,8 @@ function Message({
   message,
   onCopy,
   onRegenerate,
+  onEdit,
+  onFeedback,
   last,
   busy
 }) {
@@ -549,33 +554,29 @@ function Message({
           )}
         </div>
 
-        {isAssistant && !message.pending && (
+        {!message.pending && (
           <div className="message-actions">
-            <button
-              type="button"
-              onClick={() => {
-                void handleCopy();
-              }}
-              title="Copiar resposta"
-            >
-              {copied
-                ? <Check size={14} />
-                : <Copy size={14} />}
-
-              {copied ? 'Copiado' : 'Copiar'}
-            </button>
-
-            {last && (
-              <button
-                type="button"
-                onClick={() => {
-                  void onRegenerate();
-                }}
-                disabled={busy}
-                title="Regenerar resposta"
-              >
-                <RotateCcw size={14} />
-                Regenerar
+            {isAssistant ? (
+              <>
+                <button type="button" onClick={() => { void handleCopy(); }} title="Copiar resposta">
+                  {copied ? <Check size={14} /> : <Copy size={14} />}
+                  {copied ? 'Copiado' : 'Copiar'}
+                </button>
+                <button type="button" onClick={() => void onFeedback(message, 1)} disabled={busy} aria-pressed={message.rating === 1} title="Resposta útil">
+                  <ThumbsUp size={14} /> Útil
+                </button>
+                <button type="button" onClick={() => void onFeedback(message, -1)} disabled={busy} aria-pressed={message.rating === -1} title="Resposta não útil">
+                  <ThumbsDown size={14} /> Não útil
+                </button>
+                {last && (
+                  <button type="button" onClick={() => void onRegenerate()} disabled={busy} title="Regenerar resposta">
+                    <RotateCcw size={14} /> Regenerar
+                  </button>
+                )}
+              </>
+            ) : (
+              <button type="button" onClick={() => onEdit(message)} disabled={busy || !message.id} title="Editar mensagem">
+                <Pencil size={14} /> Editar
               </button>
             )}
           </div>
@@ -708,6 +709,8 @@ export default function App() {
   const [model, setModel] = useState('qwen3:4b');
   const [models, setModels] = useState([]);
   const [busy, setBusy] = useState(false);
+  const [editingMessageId, setEditingMessageId] = useState(null);
+  const activeRequestRef = useRef(null);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(() => !isMobile());
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -1059,9 +1062,38 @@ export default function App() {
     setError('');
     setBusy(true);
     setDraft('');
+    const controller = new AbortController();
+    activeRequestRef.current = controller;
+    const previousMessages = messages;
+
+    if (editingMessageId && activeId) {
+      try {
+        await api(`/chat/conversations/${encodeURIComponent(activeId)}/edit`, {
+          method: 'POST',
+          body: JSON.stringify({ messageId: editingMessageId, content: text }),
+          signal: controller.signal
+        });
+        const refreshed = await api(`/conversations/${encodeURIComponent(activeId)}/messages`);
+        setMessages(refreshed.messages || []);
+        setEditingMessageId(null);
+        await refreshConversations();
+      } catch (err) {
+        if (err.name === 'AbortError') {
+          setDraft(text);
+          setToast('Geração interrompida');
+        } else {
+          setError(err.message);
+          setDraft(text);
+        }
+      } finally {
+        activeRequestRef.current = null;
+        setBusy(false);
+        inputRef.current?.focus();
+      }
+      return;
+    }
 
     let conversationId = activeId;
-    const previousMessages = messages;
 
     try {
       if (!conversationId) {
@@ -1094,22 +1126,58 @@ export default function App() {
           conversationId,
           message: text,
           model: activeConversation?.model || model
-        })
+        }),
+        signal: controller.signal
       });
 
-      setMessages(old => [
-        ...old.filter(m => !m.pending),
-        data.message
-      ]);
-
+      const refreshed = await api(`/conversations/${encodeURIComponent(conversationId)}/messages`);
+      setMessages(refreshed.messages || []);
       await refreshConversations();
     } catch (err) {
-      setMessages(previousMessages);
-      setError(err.message);
-      setDraft(text);
+      if (err.name === 'AbortError') {
+        setMessages(previousMessages);
+        setDraft(text);
+        setToast('Geração interrompida');
+      } else {
+        setMessages(previousMessages);
+        setError(err.message);
+        setDraft(text);
+      }
     } finally {
+      activeRequestRef.current = null;
       setBusy(false);
       inputRef.current?.focus();
+    }
+  }
+
+  function stopGeneration() {
+    activeRequestRef.current?.abort();
+  }
+
+  function editMessage(message) {
+    if (busy || !message?.id) return;
+    setEditingMessageId(String(message.id));
+    setDraft(message.content || '');
+    inputRef.current?.focus();
+  }
+
+  async function rateMessage(message, rating) {
+    if (!activeId || !message?.id || busy) return;
+    const previousRating = message.rating ?? null;
+    const nextRating = previousRating === rating ? null : rating;
+    try {
+      if (nextRating === null) {
+        // The API accepts only +/-1, so clicking the selected vote keeps it selected.
+        return;
+      }
+      await api(`/conversations/${encodeURIComponent(activeId)}/messages/${encodeURIComponent(message.id)}/feedback`, {
+        method: 'POST',
+        body: JSON.stringify({ rating: nextRating })
+      });
+      setMessages(old => old.map(m => String(m.id) === String(message.id) ? { ...m, rating: nextRating } : m));
+      setToast(nextRating === 1 ? 'Feedback positivo registrado' : 'Feedback negativo registrado');
+    } catch (err) {
+      setError(err.message || 'Não foi possível registrar a avaliação.');
     }
   }
 
@@ -1118,13 +1186,16 @@ export default function App() {
 
     setBusy(true);
     setError('');
+    const controller = new AbortController();
+    activeRequestRef.current = controller;
 
     try {
       const data = await api(
         `/chat/conversations/${encodeURIComponent(activeId)}/regenerate`,
         {
           method: 'POST',
-          body: JSON.stringify({})
+          body: JSON.stringify({}),
+          signal: controller.signal
         }
       );
 
@@ -1135,21 +1206,21 @@ export default function App() {
 
       await refreshConversations();
     } catch (err) {
-      setError(err.message);
-
+      if (err.name === 'AbortError') {
+        setToast('Geração interrompida');
+      } else {
+        setError(err.message);
+      }
       try {
         const data = await api(
           `/conversations/${encodeURIComponent(activeId)}/messages`
         );
-
         setMessages(data.messages || []);
       } catch (reloadError) {
-        console.error(
-          'Não foi possível recarregar as mensagens:',
-          reloadError
-        );
+        console.error('Não foi possível recarregar as mensagens:', reloadError);
       }
     } finally {
+      activeRequestRef.current = null;
       setBusy(false);
     }
   }
@@ -1670,6 +1741,8 @@ export default function App() {
                   message={m}
                   onCopy={copyText}
                   onRegenerate={regenerate}
+                  onEdit={editMessage}
+                  onFeedback={rateMessage}
                   last={
                     i === messages.length - 1 &&
                     m.role === 'assistant' &&
@@ -1707,6 +1780,12 @@ export default function App() {
               void sendMessage();
             }}
           >
+            {editingMessageId && (
+              <div className="editing-banner">
+                <span>Editando mensagem anterior</span>
+                <button type="button" onClick={() => { setEditingMessageId(null); setDraft(''); }} disabled={busy}>Cancelar edição</button>
+              </div>
+            )}
             <textarea
               ref={inputRef}
               value={draft}
@@ -1721,7 +1800,7 @@ export default function App() {
                   void sendMessage();
                 }
               }}
-              placeholder="Envie uma mensagem ao Syntra..."
+              placeholder={editingMessageId ? "Edite sua mensagem..." : "Envie uma mensagem ao Syntra..."}
               rows={1}
               maxLength={12000}
               disabled={busy}
@@ -1733,16 +1812,15 @@ export default function App() {
                 Enter para enviar · Shift + Enter para nova linha
               </span>
 
-              <button
-                type="submit"
-                className="send-button"
-                disabled={busy || !draft.trim()}
-                aria-label="Enviar mensagem"
-              >
-                {busy
-                  ? <LoaderCircle size={17} className="spin" />
-                  : <Send size={17} />}
-              </button>
+              {busy ? (
+                <button type="button" className="send-button stop-button" onClick={stopGeneration} aria-label="Interromper geração" title="Interromper geração">
+                  <Square size={15} />
+                </button>
+              ) : (
+                <button type="submit" className="send-button" disabled={!draft.trim()} aria-label={editingMessageId ? "Salvar edição e regenerar" : "Enviar mensagem"}>
+                  {editingMessageId ? <Check size={17} /> : <Send size={17} />}
+                </button>
+              )}
             </div>
           </form>
 
