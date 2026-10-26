@@ -120,7 +120,7 @@ async function saveAutomaticMemory(userId, message) {
   }
 }
 
-async function ollamaChat(model, messages, memories = []) {
+async function ollamaChat(model, messages, memories = [], signal) {
   const base = getOllamaUrl();
   const url = `${base}/api/chat`;
 
@@ -170,7 +170,9 @@ async function ollamaChat(model, messages, memories = []) {
           temperature: 0.7
         }
       }),
-      signal: AbortSignal.timeout(OLLAMA_TIMEOUT_MS)
+      signal: signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(OLLAMA_TIMEOUT_MS)])
+        : AbortSignal.timeout(OLLAMA_TIMEOUT_MS)
     });
   } catch (error) {
     const detail = getErrorMessage(error);
@@ -321,6 +323,10 @@ router.post('/', async (req, res, next) => {
   }
 
   let insertedUserMessageId = null;
+  const abortController = new AbortController();
+  res.on('close', () => {
+    if (!res.writableEnded) abortController.abort();
+  });
 
   try {
     const own = await getOwnedConversation(
@@ -360,7 +366,7 @@ router.post('/', async (req, res, next) => {
     let answer;
 
     try {
-      answer = await ollamaChat(model, orderedHistory, memories);
+      answer = await ollamaChat(model, orderedHistory, memories, abortController.signal);
     } catch (error) {
       console.error('[Syntra/Chat] Falha ao gerar resposta:', {
         conversationId,
@@ -426,6 +432,7 @@ router.post('/', async (req, res, next) => {
     );
 
     return res.json({
+      userMessageId: insertedUserMessageId == null ? null : String(insertedUserMessageId),
       message: {
         role: 'assistant',
         content: answer
@@ -434,6 +441,89 @@ router.post('/', async (req, res, next) => {
     });
   } catch (error) {
     return next(error);
+  }
+});
+
+
+// =====================================================
+// EDITAR MENSAGEM E REGERAR A RESPOSTA
+// POST /api/chat/conversations/:id/edit
+// =====================================================
+
+router.post('/conversations/:id/edit', async (req, res, next) => {
+  const conversationId = String(req.params.id);
+  const messageId = String(req.body?.messageId || '');
+  const content = String(req.body?.content || '').trim();
+  const maxChars = getMaxMessageChars();
+
+  if (!/^\d+$/.test(conversationId) || !/^\d+$/.test(messageId)) {
+    return res.status(400).json({ error: 'Conversa ou mensagem inválida.' });
+  }
+  if (!content) return res.status(400).json({ error: 'A mensagem não pode ficar vazia.' });
+  if (content.length > maxChars) {
+    return res.status(413).json({ error: `A mensagem excede o limite de ${maxChars} caracteres.` });
+  }
+
+  const abortController = new AbortController();
+  res.on('close', () => {
+    if (!res.writableEnded) abortController.abort();
+  });
+
+  try {
+    const own = await getOwnedConversation(conversationId, req.user.id);
+    if (!own.rowCount) return res.status(404).json({ error: 'Conversa não encontrada.' });
+
+    const target = await pool.query(
+      "SELECT id, role FROM messages WHERE id = $1 AND conversation_id = $2",
+      [messageId, conversationId]
+    );
+    if (!target.rowCount || target.rows[0].role !== 'user') {
+      return res.status(404).json({ error: 'Mensagem do usuário não encontrada.' });
+    }
+
+    await pool.query(
+      'UPDATE messages SET content = $1, rating = NULL WHERE id = $2 AND conversation_id = $3',
+      [content, messageId, conversationId]
+    );
+    await pool.query(
+      'DELETE FROM messages WHERE conversation_id = $1 AND id > $2',
+      [conversationId, messageId]
+    );
+
+    await saveAutomaticMemory(req.user.id, content);
+    const memories = await getUserMemories(req.user.id);
+    const history = await pool.query(
+      `SELECT role, content FROM messages
+       WHERE conversation_id = $1
+       ORDER BY created_at DESC, id DESC
+       LIMIT $2`,
+      [conversationId, HISTORY_LIMIT]
+    );
+    const orderedHistory = history.rows.reverse();
+    const model = own.rows[0].model || getDefaultModel();
+    const answer = await ollamaChat(model, orderedHistory, memories, abortController.signal);
+
+    await pool.query(
+      "INSERT INTO messages (conversation_id, role, content) VALUES ($1, 'assistant', $2)",
+      [conversationId, answer]
+    );
+    await pool.query(
+      'UPDATE conversations SET updated_at = NOW() WHERE id = $1 AND user_id = $2',
+      [conversationId, req.user.id]
+    );
+
+    return res.json({
+      userMessageId: String(messageId),
+      message: { role: 'assistant', content: answer },
+      model
+    });
+  } catch (error) {
+    if (abortController.signal.aborted) return;
+    const isTimeout = error.name === 'TimeoutError' || /tempo limite|timeout/i.test(error.message || '');
+    return res.status(isTimeout ? 504 : 502).json({
+      error: isTimeout ? 'O modelo demorou demais para responder.' : 'Não foi possível gerar uma nova resposta.',
+      ...(process.env.NODE_ENV === 'development' ? { details: getErrorMessage(error) } : {})
+    });
   }
 });
 
@@ -450,6 +540,11 @@ router.post('/conversations/:id/regenerate', async (req, res, next) => {
       error: 'Conversa inválida.'
     });
   }
+
+  const abortController = new AbortController();
+  res.on('close', () => {
+    if (!res.writableEnded) abortController.abort();
+  });
 
   try {
     const own = await getOwnedConversation(
@@ -501,7 +596,7 @@ router.post('/conversations/:id/regenerate', async (req, res, next) => {
     let answer;
 
     try {
-      answer = await ollamaChat(model, orderedHistory, memories);
+      answer = await ollamaChat(model, orderedHistory, memories, abortController.signal);
     } catch (error) {
       console.error('[Syntra/Chat] Falha ao regenerar resposta:', {
         conversationId,
