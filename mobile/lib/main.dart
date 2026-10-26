@@ -1010,6 +1010,8 @@ class _ChatPageState extends State<ChatPage> {
       return;
     }
 
+    if (!mounted) return;
+
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
