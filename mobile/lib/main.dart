@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -153,6 +154,7 @@ class _ChatPageState extends State<ChatPage> {
   final scroll = ScrollController();
 
   bool busy = false;
+  http.Client? activeChatClient;
   bool loading = true;
   bool registering = false;
   String? error;
@@ -211,6 +213,7 @@ class _ChatPageState extends State<ChatPage> {
     String path, {
     String method = 'GET',
     Map<String, dynamic>? body,
+    http.Client? client,
   }) async {
     final base = normalizedApiBase;
 
@@ -238,7 +241,7 @@ class _ChatPageState extends State<ChatPage> {
     }
 
     try {
-      final streamed = await request.send().timeout(
+      final streamed = await (client != null ? client.send(request) : request.send()).timeout(
         const Duration(seconds: 30),
       );
 
@@ -769,6 +772,8 @@ class _ChatPageState extends State<ChatPage> {
 
       _scrollToBottom();
 
+      final requestClient = http.Client();
+      activeChatClient = requestClient;
       final result = await _request(
         '/chat',
         method: 'POST',
@@ -777,30 +782,118 @@ class _ChatPageState extends State<ChatPage> {
           'message': text,
           'model': model,
         },
+        client: requestClient,
       );
 
       final rawMessage = result['message'];
-
       if (rawMessage is! Map) {
         throw Exception('A API não retornou a resposta da IA.');
       }
 
-      if (!mounted) return;
-
-      setState(() {
-        messages.add(Map<String, dynamic>.from(rawMessage));
-      });
-
+      await _loadMessages();
       _scrollToBottom();
       await _loadConversations();
     } catch (e) {
       if (mounted) {
-        setState(() => error = _errorMessage(e));
+        if (activeChatClient == null) {
+          setState(() => error = 'Geração interrompida.');
+        } else {
+          setState(() => error = _errorMessage(e));
+        }
+        await _loadMessages();
       }
     } finally {
+      activeChatClient?.close();
+      activeChatClient = null;
       if (mounted) {
         setState(() => busy = false);
       }
+    }
+  }
+
+  void _stopGeneration() {
+    activeChatClient?.close();
+  }
+
+  Future<void> _editMessage(Map<String, dynamic> message) async {
+    if (busy || message['id'] == null || conversationId == null) return;
+    final controller = TextEditingController(text: message['content']?.toString() ?? '');
+    final edited = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Editar mensagem'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          minLines: 2,
+          maxLines: 7,
+          maxLength: 12000,
+          decoration: const InputDecoration(hintText: 'Ajuste seu pedido'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancelar')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, controller.text), child: const Text('Salvar e regenerar')),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (edited == null || edited.trim().isEmpty) return;
+
+    final id = conversationId!;
+    final client = http.Client();
+    setState(() { busy = true; error = null; });
+    activeChatClient = client;
+    try {
+      await _request('/chat/conversations/${Uri.encodeComponent(id)}/edit',
+        method: 'POST',
+        body: {'messageId': message['id'].toString(), 'content': edited.trim()},
+        client: client,
+      );
+      await _loadMessages();
+      await _loadConversations();
+    } catch (e) {
+      if (mounted) setState(() => error = _errorMessage(e));
+      await _loadMessages();
+    } finally {
+      client.close();
+      activeChatClient = null;
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _regenerate() async {
+    final id = conversationId;
+    if (id == null || busy || messages.isEmpty) return;
+    final client = http.Client();
+    activeChatClient = client;
+    setState(() { busy = true; error = null; });
+    try {
+      await _request('/chat/conversations/${Uri.encodeComponent(id)}/regenerate', method: 'POST', body: const {}, client: client);
+      await _loadMessages();
+      await _loadConversations();
+    } catch (e) {
+      if (mounted) setState(() => error = _errorMessage(e));
+      await _loadMessages();
+    } finally {
+      client.close();
+      activeChatClient = null;
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _rateMessage(Map<String, dynamic> message, int rating) async {
+    final id = conversationId;
+    if (id == null || message['id'] == null || busy) return;
+    try {
+      await _request('/conversations/${Uri.encodeComponent(id)}/messages/${Uri.encodeComponent(message['id'].toString())}/feedback',
+        method: 'POST', body: {'rating': rating});
+      if (!mounted) return;
+      setState(() {
+        messages = messages.map((item) => item['id'].toString() == message['id'].toString()
+          ? {...item, 'rating': rating} : item).toList();
+      });
+    } catch (e) {
+      if (mounted) setState(() => error = _errorMessage(e));
     }
   }
 
@@ -1310,12 +1403,57 @@ class _ChatPageState extends State<ChatPage> {
                             ),
                             borderRadius: BorderRadius.circular(14),
                           ),
-                          child: SelectableText(
-                            message['content']?.toString() ?? '',
-                            style: const TextStyle(
-                              fontSize: 14,
-                              height: 1.5,
-                            ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SelectableText(
+                                message['content']?.toString() ?? '',
+                                style: const TextStyle(fontSize: 14, height: 1.5),
+                              ),
+                              const SizedBox(height: 4),
+                              Wrap(
+                                spacing: 0,
+                                children: isUser
+                                  ? [
+                                      IconButton(
+                                        tooltip: 'Editar mensagem',
+                                        visualDensity: VisualDensity.compact,
+                                        onPressed: busy ? null : () => _editMessage(message),
+                                        icon: const Icon(Icons.edit_outlined, size: 18),
+                                      ),
+                                    ]
+                                  : [
+                                      IconButton(
+                                        tooltip: 'Copiar resposta',
+                                        visualDensity: VisualDensity.compact,
+                                        onPressed: () => Clipboard.setData(ClipboardData(text: message['content']?.toString() ?? '')),
+                                        icon: const Icon(Icons.copy_outlined, size: 18),
+                                      ),
+                                      IconButton(
+                                        tooltip: 'Resposta útil',
+                                        visualDensity: VisualDensity.compact,
+                                        onPressed: busy ? null : () => _rateMessage(message, 1),
+                                        color: message['rating'] == 1 ? purple : null,
+                                        icon: const Icon(Icons.thumb_up_alt_outlined, size: 18),
+                                      ),
+                                      IconButton(
+                                        tooltip: 'Resposta não útil',
+                                        visualDensity: VisualDensity.compact,
+                                        onPressed: busy ? null : () => _rateMessage(message, -1),
+                                        color: message['rating'] == -1 ? purple : null,
+                                        icon: const Icon(Icons.thumb_down_alt_outlined, size: 18),
+                                      ),
+                                      if (index == messages.length - 1)
+                                        IconButton(
+                                          tooltip: 'Regenerar resposta',
+                                          visualDensity: VisualDensity.compact,
+                                          onPressed: busy ? null : _regenerate,
+                                          icon: const Icon(Icons.refresh, size: 18),
+                                        ),
+                                    ],
+                              ),
+                            ],
                           ),
                         ),
                       );
@@ -1370,15 +1508,10 @@ class _ChatPageState extends State<ChatPage> {
                       ),
                       const SizedBox(width: 8),
                       IconButton.filled(
-                        onPressed: busy ? null : _send,
+                        onPressed: busy ? _stopGeneration : _send,
+                        tooltip: busy ? 'Interromper geração' : 'Enviar mensagem',
                         icon: busy
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
+                            ? const Icon(Icons.stop_rounded)
                             : const Icon(Icons.send),
                         style: IconButton.styleFrom(
                           backgroundColor: purple,
