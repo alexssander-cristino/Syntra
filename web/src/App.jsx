@@ -1811,8 +1811,8 @@ export default function App() {
             />
 
             <div className="composer-footer">
-              <span className="composer-hint">
-                Enter para enviar · Shift + Enter para nova linha
+              <span className={busy ? "composer-hint generation-status" : "composer-hint"} role={busy ? "status" : undefined}>
+                {busy ? "Syntra está respondendo..." : "Enter para enviar · Shift + Enter para nova linha"}
               </span>
 
               {busy ? (
