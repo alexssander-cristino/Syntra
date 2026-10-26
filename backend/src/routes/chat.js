@@ -365,9 +365,10 @@ router.post('/stream', async (req, res, next) => {
 
     let buffer = '';
     let answer = '';
+    const decoder = new TextDecoder();
     for await (const chunk of ollamaResponse.body) {
       if (abortController.signal.aborted) break;
-      buffer += new TextDecoder().decode(chunk, { stream: true });
+      buffer += decoder.decode(chunk, { stream: true });
       const lines = buffer.split('\n');
       buffer = lines.pop() || '';
       for (const line of lines) {
@@ -384,6 +385,7 @@ router.post('/stream', async (req, res, next) => {
       }
     }
     if (abortController.signal.aborted) return;
+    buffer += decoder.decode();
     if (buffer.trim()) {
       try {
         const packet = JSON.parse(buffer.trim());
