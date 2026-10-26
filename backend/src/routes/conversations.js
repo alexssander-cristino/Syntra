@@ -64,11 +64,47 @@ router.get('/:id/messages', async (req, res, next) => {
     const own = await ownedConversation(req.params.id, req.user.id);
     if (!own.rowCount) return res.status(404).json({ error: 'Conversa não encontrada.' });
     const result = await pool.query(
-      'SELECT id, role, content, created_at FROM messages WHERE conversation_id = $1 ORDER BY created_at ASC, id ASC',
+      'SELECT id, role, content, rating, created_at FROM messages WHERE conversation_id = $1 ORDER BY created_at ASC, id ASC',
       [req.params.id]
     );
     res.json({ messages: result.rows.map(m => ({ ...m, id: String(m.id) })) });
   } catch (err) { next(err); }
+});
+
+
+router.post('/:id/messages/:messageId/feedback', async (req, res, next) => {
+  try {
+    const conversationId = String(req.params.id);
+    const messageId = String(req.params.messageId);
+    const rating = req.body?.rating;
+
+    if (!/^\d+$/.test(conversationId) || !/^\d+$/.test(messageId)) {
+      return res.status(400).json({ error: 'Conversa ou mensagem inválida.' });
+    }
+    if (rating !== 1 && rating !== -1) {
+      return res.status(400).json({ error: 'A avaliação deve ser positiva (1) ou negativa (-1).' });
+    }
+
+    const result = await pool.query(
+      `UPDATE messages AS m
+       SET rating = $1
+       FROM conversations AS c
+       WHERE m.id = $2
+         AND m.conversation_id = c.id
+         AND c.id = $3
+         AND c.user_id = $4
+         AND m.role = 'assistant'
+       RETURNING m.id, m.rating`,
+      [rating, messageId, conversationId, req.user.id]
+    );
+
+    if (!result.rowCount) {
+      return res.status(404).json({ error: 'Resposta não encontrada nesta conversa.' });
+    }
+    return res.json({ feedback: { messageId: String(result.rows[0].id), rating: result.rows[0].rating } });
+  } catch (err) {
+    return next(err);
+  }
 });
 
 router.patch('/:id', async (req, res, next) => {
