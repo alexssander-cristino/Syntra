@@ -713,6 +713,74 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
+  Future<void> _streamChat({
+    required String conversation,
+    required String text,
+    required String selectedModel,
+    required http.Client client,
+  }) async {
+    final uri = Uri.parse('$normalizedApiBase/chat/stream');
+    final headers = <String, String>{
+      'Accept': 'text/event-stream',
+      'Content-Type': 'application/json',
+    };
+    final currentToken = token;
+    if (currentToken != null && currentToken.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $currentToken';
+    }
+    final request = http.Request('POST', uri)
+      ..headers.addAll(headers)
+      ..body = jsonEncode({
+        'conversationId': conversation,
+        'message': text,
+        'model': selectedModel,
+      });
+    final response = await client.send(request).timeout(const Duration(seconds: 30));
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final body = await response.stream.bytesToString();
+      final data = _decodeObject(body);
+      throw Exception(data['error']?.toString() ?? 'Erro HTTP ${response.statusCode}.');
+    }
+
+    String eventName = 'message';
+    final dataLines = <String>[];
+    await for (final line in response.stream
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())
+        .timeout(requestTimeout)) {
+      if (line.isEmpty) {
+        if (dataLines.isNotEmpty) {
+          final payload = _decodeObject(dataLines.join('\n'));
+          if (eventName == 'token' && payload['token'] is String) {
+            final current = payload['token'] as String;
+            if (mounted) {
+              setState(() {
+                final index = messages.lastIndexWhere((item) => item['role'] == 'assistant' && item['streaming'] == true);
+                if (index >= 0) {
+                  messages[index] = {
+                    ...messages[index],
+                    'content': '${messages[index]['content'] ?? ''}$current',
+                  };
+                }
+              });
+            }
+            _scrollToBottom();
+          } else if (eventName == 'error') {
+            throw Exception(payload['error']?.toString() ?? 'A geração falhou.');
+          }
+        }
+        eventName = 'message';
+        dataLines.clear();
+        continue;
+      }
+      if (line.startsWith('event:')) {
+        eventName = line.substring(6).trim();
+      } else if (line.startsWith('data:')) {
+        dataLines.add(line.substring(5).trim());
+      }
+    }
+  }
+
   Future<void> _send([String? prompt]) async {
     final text = (prompt ?? input.text).trim();
 
@@ -778,21 +846,21 @@ class _ChatPageState extends State<ChatPage> {
 
       final requestClient = http.Client();
       activeChatClient = requestClient;
-      final result = await _request(
-        '/chat',
-        method: 'POST',
-        body: {
-          'conversationId': activeId,
-          'message': text,
-          'model': model,
-        },
+      if (mounted) {
+        setState(() {
+          messages.add({
+            'role': 'assistant',
+            'content': '',
+            'streaming': true,
+          });
+        });
+      }
+      await _streamChat(
+        conversation: activeId,
+        text: text,
+        selectedModel: model,
         client: requestClient,
       );
-
-      final rawMessage = result['message'];
-      if (rawMessage is! Map) {
-        throw Exception('A API não retornou a resposta da IA.');
-      }
 
       await _loadMessages();
       _scrollToBottom();
