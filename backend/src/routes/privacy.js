@@ -39,6 +39,12 @@ router.get('/export', async (req, res, next) => {
       [req.user.id]
     );
 
+    const documentsResult = await pool.query(
+      `SELECT id, filename, char_length(content) AS characters, created_at
+       FROM documents WHERE user_id = $1 ORDER BY created_at ASC, id ASC`,
+      [req.user.id]
+    );
+
     const memoriesResult = await pool.query(
       `SELECT id, content, source, created_at, updated_at
        FROM user_memories
@@ -58,7 +64,8 @@ router.get('/export', async (req, res, next) => {
       user: userResult.rows[0],
       conversations: conversationsResult.rows,
       messages: messagesResult.rows,
-      memories: memoriesResult.rows
+      memories: memoriesResult.rows,
+      documents: documentsResult.rows
     });
   } catch (error) {
     return next(error);
