@@ -155,6 +155,7 @@ class _ChatPageState extends State<ChatPage> {
 
   bool busy = false;
   http.Client? activeChatClient;
+  bool cancelRequested = false;
   bool loading = true;
   bool registering = false;
   String? error;
@@ -716,6 +717,7 @@ class _ChatPageState extends State<ChatPage> {
 
     if (text.isEmpty || busy) return;
 
+    cancelRequested = false;
     setState(() {
       busy = true;
       error = null;
@@ -795,16 +797,13 @@ class _ChatPageState extends State<ChatPage> {
       await _loadConversations();
     } catch (e) {
       if (mounted) {
-        if (activeChatClient == null) {
-          setState(() => error = 'Geração interrompida.');
-        } else {
-          setState(() => error = _errorMessage(e));
-        }
+        setState(() => error = cancelRequested ? 'Geração interrompida.' : _errorMessage(e));
         await _loadMessages();
       }
     } finally {
       activeChatClient?.close();
       activeChatClient = null;
+      cancelRequested = false;
       if (mounted) {
         setState(() => busy = false);
       }
@@ -812,6 +811,7 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   void _stopGeneration() {
+    cancelRequested = true;
     activeChatClient?.close();
   }
 
@@ -841,6 +841,7 @@ class _ChatPageState extends State<ChatPage> {
 
     final id = conversationId!;
     final client = http.Client();
+    cancelRequested = false;
     setState(() { busy = true; error = null; });
     activeChatClient = client;
     try {
@@ -852,11 +853,12 @@ class _ChatPageState extends State<ChatPage> {
       await _loadMessages();
       await _loadConversations();
     } catch (e) {
-      if (mounted) setState(() => error = _errorMessage(e));
+      if (mounted) setState(() => error = cancelRequested ? 'Geração interrompida.' : _errorMessage(e));
       await _loadMessages();
     } finally {
       client.close();
       activeChatClient = null;
+      cancelRequested = false;
       if (mounted) setState(() => busy = false);
     }
   }
@@ -865,6 +867,7 @@ class _ChatPageState extends State<ChatPage> {
     final id = conversationId;
     if (id == null || busy || messages.isEmpty) return;
     final client = http.Client();
+    cancelRequested = false;
     activeChatClient = client;
     setState(() { busy = true; error = null; });
     try {
@@ -872,11 +875,12 @@ class _ChatPageState extends State<ChatPage> {
       await _loadMessages();
       await _loadConversations();
     } catch (e) {
-      if (mounted) setState(() => error = _errorMessage(e));
+      if (mounted) setState(() => error = cancelRequested ? 'Geração interrompida.' : _errorMessage(e));
       await _loadMessages();
     } finally {
       client.close();
       activeChatClient = null;
+      cancelRequested = false;
       if (mounted) setState(() => busy = false);
     }
   }
