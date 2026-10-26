@@ -499,7 +499,7 @@ router.post('/conversations/:id/edit', async (req, res, next) => {
     const model = own.rows[0].model || getDefaultModel();
     let answer;
     try {
-      answer = await ollamaChat(model, orderedHistory, memories, abortController.signal, await retrieveDocumentContext(req.user.id, editedContent));
+      answer = await ollamaChat(model, orderedHistory, memories, abortController.signal, await retrieveDocumentContext(req.user.id, content));
     } catch (error) {
       if (abortController.signal.aborted) return;
       const isTimeout = error.name === 'TimeoutError' || error.name === 'AbortError' || /tempo limite|timeout/i.test(error.message || '');
@@ -600,13 +600,14 @@ router.post('/conversations/:id/regenerate', async (req, res, next) => {
     );
 
     const orderedHistory = history.rows.reverse();
+    const lastUserMessage = [...orderedHistory].reverse().find(item => item.role === 'user');
     const memories = await getUserMemories(req.user.id);
     const model = own.rows[0].model || getDefaultModel();
 
     let answer;
 
     try {
-      answer = await ollamaChat(model, orderedHistory, memories, abortController.signal, await retrieveDocumentContext(req.user.id, lastUserMessage.content));
+      answer = await ollamaChat(model, orderedHistory, memories, abortController.signal, await retrieveDocumentContext(req.user.id, lastUserMessage?.content || ''));
     } catch (error) {
       console.error('[Syntra/Chat] Falha ao regenerar resposta:', {
         conversationId,
