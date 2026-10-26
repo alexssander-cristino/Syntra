@@ -1265,7 +1265,7 @@ class _ChatPageState extends State<ChatPage> {
                     if (metrics != null)
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Text('Conversas: ${metrics!['conversations']} · Mensagens: ${metrics!['messages']} · Documentos: ${metrics!['documents']}\\nTempo médio: ${metrics!['average_generation_ms'] == null ? 'sem dados' : (int.parse(metrics!['average_generation_ms'].toString()) / 1000).toStringAsFixed(1) + ' s'} · Tokens estimados: ${metrics!['estimated_output_tokens']}'),
+                        child: Text('Conversas: ${metrics!['conversations']} · Mensagens: ${metrics!['messages']} · Documentos: ${metrics!['documents']}\nTempo médio: ${metrics!['average_generation_ms'] == null ? 'sem dados' : (int.parse(metrics!['average_generation_ms'].toString()) / 1000).toStringAsFixed(1) + ' s'} · Tokens estimados: ${metrics!['estimated_output_tokens']}'),
                       ),
                     if (documents.isEmpty && !busyDocuments)
                       const Padding(
