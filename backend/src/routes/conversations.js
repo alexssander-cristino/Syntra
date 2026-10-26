@@ -2,9 +2,24 @@ import { Router } from 'express';
 import { pool } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
 import { isValidMessageRating } from '../chat-actions.js';
+import { isPositiveDatabaseId } from '../security-actions.js';
 
 const router = Router();
 router.use(requireAuth);
+
+router.param('id', (req, res, next, id) => {
+  if (!isPositiveDatabaseId(id)) {
+    return res.status(400).json({ error: 'Identificador de conversa inválido.' });
+  }
+  return next();
+});
+
+router.param('messageId', (req, res, next, id) => {
+  if (!isPositiveDatabaseId(id)) {
+    return res.status(400).json({ error: 'Identificador de mensagem inválido.' });
+  }
+  return next();
+});
 
 async function ownedConversation(id, userId) {
   return pool.query(
