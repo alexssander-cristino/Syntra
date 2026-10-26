@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import { pool } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
 import { extractMemoryCandidate, formatMemoryContext } from '../memory.js';
@@ -8,6 +9,16 @@ import { retrieveDocumentContext } from './documents.js';
 const router = Router();
 
 router.use(requireAuth);
+
+// Limits expensive inference per authenticated account, in addition to the IP limiter in server.js.
+router.use(rateLimit({
+  windowMs: 60 * 1000,
+  limit: 20,
+  keyGenerator: req => `syntra-user:${req.user.id}`,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Você enviou muitas mensagens. Aguarde um minuto e tente novamente.' }
+}));
 
 // =====================================================
 // CONFIGURAÇÕES
