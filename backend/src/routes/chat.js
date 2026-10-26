@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { pool } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
 import { extractMemoryCandidate, formatMemoryContext } from '../memory.js';
+import { validateEditedContent } from '../chat-actions.js';
 
 const router = Router();
 
@@ -453,15 +454,14 @@ router.post('/', async (req, res, next) => {
 router.post('/conversations/:id/edit', async (req, res, next) => {
   const conversationId = String(req.params.id);
   const messageId = String(req.body?.messageId || '');
-  const content = String(req.body?.content || '').trim();
-  const maxChars = getMaxMessageChars();
+  const validation = validateEditedContent(req.body?.content, getMaxMessageChars());
+  const content = validation.content;
 
   if (!/^\d+$/.test(conversationId) || !/^\d+$/.test(messageId)) {
     return res.status(400).json({ error: 'Conversa ou mensagem inválida.' });
   }
-  if (!content) return res.status(400).json({ error: 'A mensagem não pode ficar vazia.' });
-  if (content.length > maxChars) {
-    return res.status(413).json({ error: `A mensagem excede o limite de ${maxChars} caracteres.` });
+  if (!validation.ok) {
+    return res.status(validation.content ? 413 : 400).json({ error: validation.error });
   }
 
   const abortController = new AbortController();
