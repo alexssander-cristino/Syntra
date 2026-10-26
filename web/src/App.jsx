@@ -9,7 +9,7 @@ import {
 
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { api } from './api';
+import { api, streamChat } from './api';
 import CookieConsent from './CookieConsent';
 
 import {
@@ -1126,14 +1126,23 @@ export default function App() {
         { role: 'assistant', content: '', pending: true }
       ]);
 
-      const data = await api('/chat', {
-        method: 'POST',
+      await streamChat('/chat/stream', {
         body: JSON.stringify({
           conversationId,
           message: text,
           model: activeConversation?.model || model
         }),
-        signal: controller.signal
+        signal: controller.signal,
+        onToken: (_token, fullText) => {
+          setMessages(current => {
+            const next = [...current];
+            const lastIndex = next.length - 1;
+            if (lastIndex >= 0 && next[lastIndex].role === 'assistant' && next[lastIndex].pending) {
+              next[lastIndex] = { ...next[lastIndex], content: fullText };
+            }
+            return next;
+          });
+        }
       });
 
       const refreshed = await api(`/conversations/${encodeURIComponent(conversationId)}/messages`);
