@@ -503,7 +503,17 @@ router.post('/conversations/:id/edit', async (req, res, next) => {
     );
     const orderedHistory = history.rows.reverse();
     const model = own.rows[0].model || getDefaultModel();
-    const answer = await ollamaChat(model, orderedHistory, memories, abortController.signal);
+    let answer;
+    try {
+      answer = await ollamaChat(model, orderedHistory, memories, abortController.signal);
+    } catch (error) {
+      if (abortController.signal.aborted) return;
+      const isTimeout = error.name === 'TimeoutError' || error.name === 'AbortError' || /tempo limite|timeout/i.test(error.message || '');
+      return res.status(isTimeout ? 504 : 502).json({
+        error: isTimeout ? 'O modelo demorou demais para responder.' : 'Não foi possível gerar uma nova resposta.',
+        ...(process.env.NODE_ENV === 'development' ? { details: getErrorMessage(error) } : {})
+      });
+    }
 
     await pool.query(
       "INSERT INTO messages (conversation_id, role, content) VALUES ($1, 'assistant', $2)",
@@ -520,12 +530,7 @@ router.post('/conversations/:id/edit', async (req, res, next) => {
       model
     });
   } catch (error) {
-    if (abortController.signal.aborted) return;
-    const isTimeout = error.name === 'TimeoutError' || /tempo limite|timeout/i.test(error.message || '');
-    return res.status(isTimeout ? 504 : 502).json({
-      error: isTimeout ? 'O modelo demorou demais para responder.' : 'Não foi possível gerar uma nova resposta.',
-      ...(process.env.NODE_ENV === 'development' ? { details: getErrorMessage(error) } : {})
-    });
+    return next(error);
   }
 });
 
