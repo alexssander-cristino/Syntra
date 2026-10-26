@@ -1490,6 +1490,14 @@ class _ChatPageState extends State<ChatPage> {
                         ),
                       ],
                     ),
+                  if (busy)
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 6),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text('Syntra está respondendo...', style: TextStyle(fontSize: 12)),
+                      ),
+                    ),
                   const SizedBox(height: 8),
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.end,
