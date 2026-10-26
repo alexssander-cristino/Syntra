@@ -142,6 +142,16 @@ const chatLimiter = rateLimit({
   },
 });
 
+const documentLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 10,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: {
+    error: 'Muitas importações de documentos em pouco tempo. Aguarde um minuto.',
+  },
+});
+
 // =====================================================
 // ROTA INICIAL
 // =====================================================
@@ -157,7 +167,7 @@ app.get('/', (_req, res) => {
 
 app.use('/api/privacy', privacyRoutes);
 app.use('/api/memory', memoryRoutes);
-app.use('/api/documents', documentsRoutes);
+app.use('/api/documents', documentLimiter, documentsRoutes);
 app.use('/api/metrics', metricsRoutes);
 // =====================================================
 // HEALTH CHECK
