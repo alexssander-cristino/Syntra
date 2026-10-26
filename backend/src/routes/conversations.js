@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { pool } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
+import { isValidMessageRating } from '../chat-actions.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -81,7 +82,7 @@ router.post('/:id/messages/:messageId/feedback', async (req, res, next) => {
     if (!/^\d+$/.test(conversationId) || !/^\d+$/.test(messageId)) {
       return res.status(400).json({ error: 'Conversa ou mensagem inválida.' });
     }
-    if (rating !== 1 && rating !== -1) {
+    if (!isValidMessageRating(rating)) {
       return res.status(400).json({ error: 'A avaliação deve ser positiva (1) ou negativa (-1).' });
     }
 

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { pool } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
 import { extractMemoryCandidate, formatMemoryContext } from '../memory.js';
+import { validateEditedContent } from '../chat-actions.js';
 
 const router = Router();
 
@@ -392,6 +393,8 @@ router.post('/', async (req, res, next) => {
         }
       }
 
+      if (abortController.signal.aborted) return;
+
       const isTimeout =
         error.name === 'TimeoutError' ||
         error.name === 'AbortError' ||
@@ -453,15 +456,14 @@ router.post('/', async (req, res, next) => {
 router.post('/conversations/:id/edit', async (req, res, next) => {
   const conversationId = String(req.params.id);
   const messageId = String(req.body?.messageId || '');
-  const content = String(req.body?.content || '').trim();
-  const maxChars = getMaxMessageChars();
+  const validation = validateEditedContent(req.body?.content, getMaxMessageChars());
+  const content = validation.content;
 
   if (!/^\d+$/.test(conversationId) || !/^\d+$/.test(messageId)) {
     return res.status(400).json({ error: 'Conversa ou mensagem inválida.' });
   }
-  if (!content) return res.status(400).json({ error: 'A mensagem não pode ficar vazia.' });
-  if (content.length > maxChars) {
-    return res.status(413).json({ error: `A mensagem excede o limite de ${maxChars} caracteres.` });
+  if (!validation.ok) {
+    return res.status(validation.content ? 413 : 400).json({ error: validation.error });
   }
 
   const abortController = new AbortController();
@@ -481,28 +483,40 @@ router.post('/conversations/:id/edit', async (req, res, next) => {
       return res.status(404).json({ error: 'Mensagem do usuário não encontrada.' });
     }
 
+    const history = await pool.query(
+      `SELECT id, role, content FROM messages
+       WHERE conversation_id = $1 AND id <= $2
+       ORDER BY created_at DESC, id DESC
+       LIMIT $3`,
+      [conversationId, messageId, HISTORY_LIMIT]
+    );
+    const orderedHistory = history.rows.reverse().map((item) => ({
+      role: item.role,
+      content: String(item.id) === messageId ? content : item.content
+    }));
+    const memories = await getUserMemories(req.user.id);
+    const model = own.rows[0].model || getDefaultModel();
+    let answer;
+    try {
+      answer = await ollamaChat(model, orderedHistory, memories, abortController.signal);
+    } catch (error) {
+      if (abortController.signal.aborted) return;
+      const isTimeout = error.name === 'TimeoutError' || error.name === 'AbortError' || /tempo limite|timeout/i.test(error.message || '');
+      return res.status(isTimeout ? 504 : 502).json({
+        error: isTimeout ? 'O modelo demorou demais para responder.' : 'Não foi possível gerar uma nova resposta.',
+        ...(process.env.NODE_ENV === 'development' ? { details: getErrorMessage(error) } : {})
+      });
+    }
+
     await pool.query(
-      'UPDATE messages SET content = $1, rating = NULL WHERE id = $2 AND conversation_id = $3',
+      'UPDATE messages SET content = $1 WHERE id = $2 AND conversation_id = $3',
       [content, messageId, conversationId]
     );
     await pool.query(
       'DELETE FROM messages WHERE conversation_id = $1 AND id > $2',
       [conversationId, messageId]
     );
-
     await saveAutomaticMemory(req.user.id, content);
-    const memories = await getUserMemories(req.user.id);
-    const history = await pool.query(
-      `SELECT role, content FROM messages
-       WHERE conversation_id = $1
-       ORDER BY created_at DESC, id DESC
-       LIMIT $2`,
-      [conversationId, HISTORY_LIMIT]
-    );
-    const orderedHistory = history.rows.reverse();
-    const model = own.rows[0].model || getDefaultModel();
-    const answer = await ollamaChat(model, orderedHistory, memories, abortController.signal);
-
     await pool.query(
       "INSERT INTO messages (conversation_id, role, content) VALUES ($1, 'assistant', $2)",
       [conversationId, answer]
@@ -518,12 +532,7 @@ router.post('/conversations/:id/edit', async (req, res, next) => {
       model
     });
   } catch (error) {
-    if (abortController.signal.aborted) return;
-    const isTimeout = error.name === 'TimeoutError' || /tempo limite|timeout/i.test(error.message || '');
-    return res.status(isTimeout ? 504 : 502).json({
-      error: isTimeout ? 'O modelo demorou demais para responder.' : 'Não foi possível gerar uma nova resposta.',
-      ...(process.env.NODE_ENV === 'development' ? { details: getErrorMessage(error) } : {})
-    });
+    return next(error);
   }
 });
 
@@ -603,6 +612,8 @@ router.post('/conversations/:id/regenerate', async (req, res, next) => {
         model,
         error: getErrorMessage(error)
       });
+
+      if (abortController.signal.aborted) return;
 
       const isTimeout =
         error.name === 'TimeoutError' ||

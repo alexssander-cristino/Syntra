@@ -1085,6 +1085,12 @@ export default function App() {
           setError(err.message);
           setDraft(text);
         }
+        try {
+          const refreshed = await api(`/conversations/${encodeURIComponent(activeId)}/messages`);
+          setMessages(refreshed.messages || []);
+        } catch (reloadError) {
+          console.error('Não foi possível recarregar as mensagens:', reloadError);
+        }
       } finally {
         activeRequestRef.current = null;
         setBusy(false);
@@ -1199,11 +1205,8 @@ export default function App() {
         }
       );
 
-      setMessages(old => [
-        ...old.slice(0, -1),
-        data.message
-      ]);
-
+      const refreshed = await api(`/conversations/${encodeURIComponent(activeId)}/messages`);
+      setMessages(refreshed.messages || []);
       await refreshConversations();
     } catch (err) {
       if (err.name === 'AbortError') {
@@ -1808,8 +1811,8 @@ export default function App() {
             />
 
             <div className="composer-footer">
-              <span className="composer-hint">
-                Enter para enviar · Shift + Enter para nova linha
+              <span className={busy ? "composer-hint generation-status" : "composer-hint"} role={busy ? "status" : undefined}>
+                {busy ? "Syntra está respondendo..." : "Enter para enviar · Shift + Enter para nova linha"}
               </span>
 
               {busy ? (

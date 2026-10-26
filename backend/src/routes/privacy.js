@@ -31,7 +31,7 @@ router.get('/export', async (req, res, next) => {
     );
 
     const messagesResult = await pool.query(
-      `SELECT m.id, m.conversation_id, m.role, m.content, m.created_at
+      `SELECT m.id, m.conversation_id, m.role, m.content, m.rating, m.created_at
        FROM messages m
        INNER JOIN conversations c ON c.id = m.conversation_id
        WHERE c.user_id = $1

@@ -1736,3 +1736,34 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 .danger-text {
   color: #e05d6f;
 }
+
+/* Conversa aprimorada: edição, avaliação e interrupção da geração. */
+.editing-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  margin: 0 0 8px;
+  border: 1px solid var(--border, rgba(140, 120, 220, .35));
+  border-radius: 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.editing-banner button {
+  border: 0;
+  background: transparent;
+  color: var(--purple);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+}
+.message-actions button[aria-pressed="true"] {
+  color: var(--purple);
+  background: color-mix(in srgb, var(--purple) 12%, transparent);
+}
+.send-button.stop-button {
+  background: var(--surface, #292637);
+  border: 1px solid var(--purple);
+  color: var(--purple);
+}
