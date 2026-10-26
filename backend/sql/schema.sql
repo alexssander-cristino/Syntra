@@ -48,3 +48,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_user_memories_user_content
   ON user_memories (user_id, lower(content));
 CREATE INDEX IF NOT EXISTS idx_user_memories_user_updated
   ON user_memories (user_id, updated_at DESC);
+
+
+CREATE TABLE IF NOT EXISTS documents (
+  id BIGSERIAL PRIMARY KEY,
+  user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  filename VARCHAR(180) NOT NULL,
+  content TEXT NOT NULL CHECK (char_length(trim(content)) > 0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_documents_user_created
+  ON documents (user_id, created_at DESC, id DESC);
