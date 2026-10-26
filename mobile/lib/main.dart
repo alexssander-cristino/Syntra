@@ -6,7 +6,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
-import 'package:file_picker/file_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const apiBase = String.fromEnvironment(
@@ -1167,6 +1166,8 @@ class _ChatPageState extends State<ChatPage> {
     Map<String, dynamic>? metrics;
     var busyDocuments = true;
     String? documentsError;
+    final filenameInput = TextEditingController();
+    final documentContentInput = TextEditingController();
 
     try {
       final results = await Future.wait([_request('/documents'), _request('/metrics')]);
@@ -1206,20 +1207,20 @@ class _ChatPageState extends State<ChatPage> {
 
           Future<void> importDocument() async {
             try {
-              final picked = await FilePicker.platform.pickFiles(
-                type: FileType.custom,
-                allowedExtensions: const ['txt', 'md', 'csv', 'json', 'log'],
-                withData: true,
-              );
-              if (picked == null || picked.files.isEmpty) return;
-              final file = picked.files.first;
-              final bytes = file.bytes;
-              if (bytes == null) throw Exception('Não foi possível ler o arquivo selecionado.');
-              if (bytes.length > 100 * 1024) throw Exception('O arquivo deve ter no máximo 100 KB.');
-              final content = utf8.decode(bytes, allowMalformed: false).trim();
+              final filename = filenameInput.text.trim();
+              final extension = filename.split('.').last.toLowerCase();
+              if (filename.isEmpty || !const {'txt', 'md', 'csv', 'json', 'log'}.contains(extension)) {
+                throw Exception('Informe um nome de arquivo com extensão TXT, MD, CSV, JSON ou LOG.');
+              }
+              final content = documentContentInput.text.trim();
               if (content.isEmpty) throw Exception('O documento está vazio.');
+              if (utf8.encode(content).length > 100 * 1024) {
+                throw Exception('O documento deve ter no máximo 100 KB.');
+              }
               update(() { busyDocuments = true; documentsError = null; });
-              await _request('/documents', method: 'POST', body: {'filename': file.name, 'content': content});
+              await _request('/documents', method: 'POST', body: {'filename': filename, 'content': content});
+              filenameInput.clear();
+              documentContentInput.clear();
               await refresh();
             } catch (e) {
               update(() { busyDocuments = false; documentsError = _errorMessage(e); });
@@ -1247,10 +1248,28 @@ class _ChatPageState extends State<ChatPage> {
                   children: [
                     const Text('Importe documentos de texto para o Syntra buscar trechos relevantes ao responder.'),
                     const SizedBox(height: 12),
+                    TextField(
+                      controller: filenameInput,
+                      decoration: const InputDecoration(
+                        labelText: 'Nome do arquivo',
+                        hintText: 'notas.txt',
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: documentContentInput,
+                      minLines: 4,
+                      maxLines: 8,
+                      maxLength: 100 * 1024,
+                      decoration: const InputDecoration(
+                        labelText: 'Conteúdo do documento',
+                        alignLabelWithHint: true,
+                      ),
+                    ),
                     FilledButton.icon(
                       onPressed: busyDocuments ? null : importDocument,
-                      icon: const Icon(Icons.upload_file),
-                      label: const Text('Importar arquivo'),
+                      icon: const Icon(Icons.add),
+                      label: const Text('Importar documento'),
                     ),
                     const SizedBox(height: 8),
                     Text('TXT, MD, CSV, JSON ou LOG · até 100 KB por arquivo · até 50 documentos', style: Theme.of(context).textTheme.bodySmall),
@@ -1294,6 +1313,8 @@ class _ChatPageState extends State<ChatPage> {
         },
       ),
     );
+    filenameInput.dispose();
+    documentContentInput.dispose();
   }
 
   Future<void> _openSettings() async {
