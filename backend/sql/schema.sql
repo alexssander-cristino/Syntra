@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS messages (
   conversation_id BIGINT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
   role VARCHAR(20) NOT NULL CHECK (role IN ('user', 'assistant')),
   content TEXT NOT NULL,
+  rating SMALLINT CHECK (rating IN (-1, 1)),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
