@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import jwt from 'jsonwebtoken';
-import { requireAuth } from './middleware/auth.js';
+import { requireAuth } from './auth.js';
 
 const secret = 'test-secret-with-at-least-thirty-two-characters';
 process.env.JWT_SECRET = secret;
