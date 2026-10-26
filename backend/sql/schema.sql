@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS messages (
   role VARCHAR(20) NOT NULL CHECK (role IN ('user', 'assistant')),
   content TEXT NOT NULL,
   rating SMALLINT CHECK (rating IN (-1, 1)),
+  generation_ms INTEGER CHECK (generation_ms IS NULL OR generation_ms >= 0),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
