@@ -478,7 +478,7 @@ class _ChatPageState extends State<ChatPage> {
         },
       );
       final data = await _request(
-        uri.toString().replaceFirst('$normalizedApiBase', ''),
+        uri.toString().replaceFirst(normalizedApiBase, ''),
       );
       final raw = data['conversations'];
 
