@@ -1625,10 +1625,20 @@ class _ChatPageState extends State<ChatPage> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              SelectableText(
-                                message['content']?.toString() ?? '',
-                                style: const TextStyle(fontSize: 14, height: 1.5),
-                              ),
+                              if (message['streaming'] == true && (message['content']?.toString() ?? '').isEmpty)
+                                const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+                                    SizedBox(width: 8),
+                                    Text('Syntra está pensando...'),
+                                  ],
+                                )
+                              else
+                                SelectableText(
+                                  message['content']?.toString() ?? '',
+                                  style: const TextStyle(fontSize: 14, height: 1.5),
+                                ),
                               const SizedBox(height: 4),
                               Wrap(
                                 spacing: 0,
