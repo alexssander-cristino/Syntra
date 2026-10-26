@@ -168,6 +168,7 @@ class _ChatPageState extends State<ChatPage> {
 
   @override
   void dispose() {
+    activeChatClient?.close();
     _searchDebounce?.cancel();
     searchConversationsInput.dispose();
     input.dispose();
@@ -762,6 +763,7 @@ class _ChatPageState extends State<ChatPage> {
       if (activeId == null) {
         throw Exception('Nenhuma conversa selecionada.');
       }
+      if (cancelRequested) throw Exception('Geração interrompida.');
 
       if (mounted) {
         setState(() {
