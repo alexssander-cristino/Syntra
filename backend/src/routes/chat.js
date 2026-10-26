@@ -328,11 +328,6 @@ router.post('/', async (req, res, next) => {
     if (!res.writableEnded) abortController.abort();
   });
 
-  const abortController = new AbortController();
-  res.on('close', () => {
-    if (!res.writableEnded) abortController.abort();
-  });
-
   try {
     const own = await getOwnedConversation(
       conversationId,
@@ -461,7 +456,7 @@ router.post('/conversations/:id/edit', async (req, res, next) => {
   const content = String(req.body?.content || '').trim();
   const maxChars = getMaxMessageChars();
 
-  if (!/^\\d+$/.test(conversationId) || !/^\\d+$/.test(messageId)) {
+  if (!/^\d+$/.test(conversationId) || !/^\d+$/.test(messageId)) {
     return res.status(400).json({ error: 'Conversa ou mensagem inválida.' });
   }
   if (!content) return res.status(400).json({ error: 'A mensagem não pode ficar vazia.' });
@@ -545,6 +540,11 @@ router.post('/conversations/:id/regenerate', async (req, res, next) => {
       error: 'Conversa inválida.'
     });
   }
+
+  const abortController = new AbortController();
+  res.on('close', () => {
+    if (!res.writableEnded) abortController.abort();
+  });
 
   try {
     const own = await getOwnedConversation(
