@@ -786,10 +786,11 @@ router.post('/conversations/:id/regenerate', async (req, res, next) => {
       [previousAssistantMessageId, conversationId]
     );
 
+    const generationMs = Date.now() - generationStartedAt;
     await pool.query(
-      `INSERT INTO messages (conversation_id, role, content)
-       VALUES ($1, $2, $3)`,
-      [conversationId, 'assistant', answer]
+      `INSERT INTO messages (conversation_id, role, content, generation_ms)
+       VALUES ($1, $2, $3, $4)`,
+      [conversationId, 'assistant', answer, generationMs]
     );
 
     await pool.query(
