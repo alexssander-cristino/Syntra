@@ -483,25 +483,18 @@ router.post('/conversations/:id/edit', async (req, res, next) => {
       return res.status(404).json({ error: 'Mensagem do usuário não encontrada.' });
     }
 
-    await pool.query(
-      'UPDATE messages SET content = $1, rating = NULL WHERE id = $2 AND conversation_id = $3',
-      [content, messageId, conversationId]
-    );
-    await pool.query(
-      'DELETE FROM messages WHERE conversation_id = $1 AND id > $2',
-      [conversationId, messageId]
-    );
-
-    await saveAutomaticMemory(req.user.id, content);
-    const memories = await getUserMemories(req.user.id);
     const history = await pool.query(
-      `SELECT role, content FROM messages
-       WHERE conversation_id = $1
+      `SELECT id, role, content FROM messages
+       WHERE conversation_id = $1 AND id <= $2
        ORDER BY created_at DESC, id DESC
-       LIMIT $2`,
-      [conversationId, HISTORY_LIMIT]
+       LIMIT $3`,
+      [conversationId, messageId, HISTORY_LIMIT]
     );
-    const orderedHistory = history.rows.reverse();
+    const orderedHistory = history.rows.reverse().map((item) => ({
+      role: item.role,
+      content: String(item.id) === messageId ? content : item.content
+    }));
+    const memories = await getUserMemories(req.user.id);
     const model = own.rows[0].model || getDefaultModel();
     let answer;
     try {
@@ -515,6 +508,15 @@ router.post('/conversations/:id/edit', async (req, res, next) => {
       });
     }
 
+    await pool.query(
+      'UPDATE messages SET content = $1 WHERE id = $2 AND conversation_id = $3',
+      [content, messageId, conversationId]
+    );
+    await pool.query(
+      'DELETE FROM messages WHERE conversation_id = $1 AND id > $2',
+      [conversationId, messageId]
+    );
+    await saveAutomaticMemory(req.user.id, content);
     await pool.query(
       "INSERT INTO messages (conversation_id, role, content) VALUES ($1, 'assistant', $2)",
       [conversationId, answer]
