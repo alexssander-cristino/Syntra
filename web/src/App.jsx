@@ -1081,15 +1081,15 @@ export default function App() {
         if (err.name === 'AbortError') {
           setDraft(text);
           setToast('Geração interrompida');
-          try {
-            const refreshed = await api(`/conversations/${encodeURIComponent(activeId)}/messages`);
-            setMessages(refreshed.messages || []);
-          } catch (reloadError) {
-            console.error('Não foi possível recarregar as mensagens:', reloadError);
-          }
         } else {
           setError(err.message);
           setDraft(text);
+        }
+        try {
+          const refreshed = await api(`/conversations/${encodeURIComponent(activeId)}/messages`);
+          setMessages(refreshed.messages || []);
+        } catch (reloadError) {
+          console.error('Não foi possível recarregar as mensagens:', reloadError);
         }
       } finally {
         activeRequestRef.current = null;
