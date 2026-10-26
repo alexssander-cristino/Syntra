@@ -27,7 +27,8 @@ export async function api(path, { token, ...options } = {}) {
       headers,
       credentials: 'include'
     });
-  } catch {
+  } catch (error) {
+    if (error?.name === 'AbortError') throw error;
     throw new Error(
       'Não foi possível conectar à API. Verifique se o backend está rodando.'
     );
