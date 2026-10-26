@@ -9,7 +9,7 @@ import {
 
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { api } from './api';
+import { api, streamChat } from './api';
 import CookieConsent from './CookieConsent';
 
 import {
@@ -44,7 +44,9 @@ import {
   Pencil,
   ThumbsUp,
   ThumbsDown,
-  Square
+  Square,
+  FileText,
+  BarChart3
 } from 'lucide-react';
 
 const isMobile = () =>
@@ -266,6 +268,8 @@ function SettingsModal({
   onExportData,
   onDeleteAccount,
   onManageMemory,
+  onManageDocuments,
+  metrics,
   privacyBusy
 }) {
   useEffect(() => {
@@ -379,6 +383,31 @@ function SettingsModal({
             <Sparkles size={17} />
             Memória contextual
           </button>
+
+          <button
+            type="button"
+            className="secondary full"
+            onClick={onManageDocuments}
+            disabled={privacyBusy}
+          >
+            <FileText size={17} />
+            Documentos e contexto (RAG)
+          </button>
+
+          {metrics && (
+            <div className="privacy-settings-heading">
+              <BarChart3 size={19} />
+              <div>
+                <strong>Uso da sua conta</strong>
+                <p className="tiny muted">
+                  {metrics.conversations} conversas · {metrics.messages} mensagens · {metrics.documents} documentos
+                </p>
+                <p className="tiny muted">
+                  Avaliações positivas: {metrics.positive_ratings} · negativas: {metrics.negative_ratings}
+                </p>
+              </div>
+            </div>
+          )}
 
           <div className="privacy-settings-heading">
             <ShieldCheck size={19} />
@@ -671,6 +700,78 @@ function MemoryModal({ memories, onClose, onAdd, onDelete, onClear, busy, draft,
   );
 }
 
+
+
+function DocumentsModal({ documents, metrics, onClose, onUpload, onDelete, busy }) {
+  const [error, setError] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef(null);
+
+  async function selectFile(event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!/\.(txt|md|csv|json|log)$/i.test(file.name)) {
+      setError('Por enquanto, envie arquivos TXT, MD, CSV, JSON ou LOG.');
+      return;
+    }
+    if (file.size > 100 * 1024) {
+      setError('O arquivo deve ter no máximo 100 KB.');
+      return;
+    }
+    setError('');
+    setUploading(true);
+    try {
+      const content = await file.text();
+      await onUpload(file.name, content);
+    } catch (err) {
+      setError(err.message || 'Não foi possível importar o arquivo.');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" onMouseDown={e => {
+      if (e.target === e.currentTarget && !busy && !uploading) onClose();
+    }}>
+      <section className="settings-modal memory-modal" role="dialog" aria-modal="true" aria-label="Documentos para contexto">
+        <div className="modal-heading">
+          <div>
+            <h2>Documentos e contexto</h2>
+            <p className="muted">O Syntra procura trechos relevantes dos seus documentos para fundamentar as respostas.</p>
+          </div>
+          <button type="button" className="icon-button" onClick={onClose} disabled={busy || uploading} aria-label="Fechar"><X /></button>
+        </div>
+
+        <input ref={fileRef} type="file" accept=".txt,.md,.csv,.json,.log,text/plain,text/markdown,application/json" hidden onChange={selectFile} />
+        <button type="button" className="primary full" onClick={() => fileRef.current?.click()} disabled={busy || uploading}>
+          {uploading ? <LoaderCircle size={17} className="spin" /> : <Plus size={17} />}
+          Importar documento de texto
+        </button>
+        <p className="tiny muted">Formatos: TXT, MD, CSV, JSON e LOG · até 100 KB por arquivo · até 50 documentos. Não envie senhas ou dados sensíveis.</p>
+
+        {error && <div className="error-box" role="alert"><AlertCircle size={16} /><span>{error}</span></div>}
+
+        <div className="memory-list-heading"><strong>Seus documentos ({documents.length})</strong></div>
+        <div className="memory-list">
+          {documents.length === 0 ? <p className="muted">Nenhum documento importado.</p> : documents.map(doc => (
+            <article className="memory-item" key={doc.id}>
+              <div>
+                <p>{doc.filename}</p>
+                <small className="muted">{doc.characters} caracteres · {new Date(doc.created_at).toLocaleDateString()}</small>
+              </div>
+              <button type="button" className="icon-button danger" aria-label="Excluir documento" title="Excluir documento" disabled={busy || uploading} onClick={() => void onDelete(doc.id)}><Trash2 size={16} /></button>
+            </article>
+          ))}
+        </div>
+        {metrics && <p className="tiny muted">Uso registrado: {metrics.messages} mensagens e {metrics.conversations} conversas.</p>}
+        <button type="button" className="secondary full" onClick={onClose} disabled={busy || uploading}>Concluído</button>
+      </section>
+    </div>
+  );
+}
+
 export default function App() {
   const [auth, setAuth] = useState(null);
   const [authChecking, setAuthChecking] = useState(true);
@@ -719,6 +820,10 @@ export default function App() {
   const [memories, setMemories] = useState([]);
   const [memoryDraft, setMemoryDraft] = useState('');
   const [memoryBusy, setMemoryBusy] = useState(false);
+  const [documentsOpen, setDocumentsOpen] = useState(false);
+  const [documents, setDocuments] = useState([]);
+  const [metrics, setMetrics] = useState(null);
+  const [documentsBusy, setDocumentsBusy] = useState(false);
   const [toast, setToast] = useState('');
   const [error, setError] = useState('');
 
@@ -1126,14 +1231,23 @@ export default function App() {
         { role: 'assistant', content: '', pending: true }
       ]);
 
-      const data = await api('/chat', {
-        method: 'POST',
+      await streamChat('/chat/stream', {
         body: JSON.stringify({
           conversationId,
           message: text,
           model: activeConversation?.model || model
         }),
-        signal: controller.signal
+        signal: controller.signal,
+        onToken: (_token, fullText) => {
+          setMessages(current => {
+            const next = [...current];
+            const lastIndex = next.length - 1;
+            if (lastIndex >= 0 && next[lastIndex].role === 'assistant' && next[lastIndex].pending) {
+              next[lastIndex] = { ...next[lastIndex], content: fullText };
+            }
+            return next;
+          });
+        }
       });
 
       const refreshed = await api(`/conversations/${encodeURIComponent(conversationId)}/messages`);
@@ -1289,6 +1403,52 @@ export default function App() {
     } catch (err) {
       setModel(previousModel);
       setError(err.message);
+    }
+  }
+
+  async function openDocumentsManager() {
+    setSettingsOpen(false);
+    setDocumentsOpen(true);
+    setDocumentsBusy(true);
+    try {
+      const [docsData, metricsData] = await Promise.all([
+        api('/documents'),
+        api('/metrics')
+      ]);
+      setDocuments(docsData.documents || []);
+      setMetrics(metricsData.metrics || null);
+    } catch (err) {
+      setError(err.message || 'Não foi possível carregar documentos e métricas.');
+    } finally {
+      setDocumentsBusy(false);
+    }
+  }
+
+  async function uploadDocument(filename, content) {
+    setDocumentsBusy(true);
+    try {
+      const data = await api('/documents', {
+        method: 'POST',
+        body: JSON.stringify({ filename, content })
+      });
+      setDocuments(old => [data.document, ...old.filter(item => item.id !== data.document.id)]);
+      const metricData = await api('/metrics').catch(() => null);
+      if (metricData?.metrics) setMetrics(metricData.metrics);
+      setToast('Documento importado para contexto');
+    } finally {
+      setDocumentsBusy(false);
+    }
+  }
+
+  async function deleteDocument(id) {
+    setDocumentsBusy(true);
+    try {
+      await api(`/documents/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      setDocuments(old => old.filter(item => item.id !== id));
+      const metricData = await api('/metrics').catch(() => null);
+      if (metricData?.metrics) setMetrics(metricData.metrics);
+    } finally {
+      setDocumentsBusy(false);
     }
   }
 
@@ -1844,7 +2004,20 @@ export default function App() {
           onExportData={() => void exportMyData()}
           onDeleteAccount={() => void deleteMyAccount()}
           onManageMemory={() => void openMemoryManager()}
+          onManageDocuments={() => void openDocumentsManager()}
+          metrics={metrics}
           privacyBusy={privacyBusy}
+        />
+      )}
+
+      {documentsOpen && (
+        <DocumentsModal
+          documents={documents}
+          metrics={metrics}
+          onClose={() => setDocumentsOpen(false)}
+          onUpload={uploadDocument}
+          onDelete={deleteDocument}
+          busy={documentsBusy}
         />
       )}
 

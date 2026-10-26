@@ -12,6 +12,8 @@ import chatRoutes from './routes/chat.js';
 import { pool } from './db.js';
 import privacyRoutes from './routes/privacy.js';
 import memoryRoutes from './routes/memory.js';
+import documentsRoutes from './routes/documents.js';
+import metricsRoutes from './routes/metrics.js';
 
 // =====================================================
 // CONFIGURAÇÕES
@@ -155,6 +157,8 @@ app.get('/', (_req, res) => {
 
 app.use('/api/privacy', privacyRoutes);
 app.use('/api/memory', memoryRoutes);
+app.use('/api/documents', documentsRoutes);
+app.use('/api/metrics', metricsRoutes);
 // =====================================================
 // HEALTH CHECK
 // =====================================================
