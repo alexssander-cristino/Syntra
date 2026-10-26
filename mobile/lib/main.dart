@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
+import 'package:file_picker/file_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const apiBase = String.fromEnvironment(
@@ -1161,6 +1162,138 @@ class _ChatPageState extends State<ChatPage> {
     memoryInput.dispose();
   }
 
+  Future<void> _openDocumentsSettings() async {
+    var documents = <Map<String, dynamic>>[];
+    Map<String, dynamic>? metrics;
+    var busyDocuments = true;
+    String? documentsError;
+
+    Future<void> refresh(StateSetter update) async {
+      try {
+        final results = await Future.wait([
+          _request('/documents'),
+          _request('/metrics'),
+        ]);
+        final raw = results[0]['documents'];
+        documents = raw is List
+            ? raw.whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList()
+            : <Map<String, dynamic>>[];
+        final rawMetrics = results[1]['metrics'];
+        metrics = rawMetrics is Map ? Map<String, dynamic>.from(rawMetrics) : null;
+        documentsError = null;
+      } catch (e) {
+        documentsError = _errorMessage(e);
+      } finally {
+        busyDocuments = false;
+        update(() {});
+      }
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (ctx, update) {
+          if (busyDocuments && documents.isEmpty) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (ctx.mounted && busyDocuments) refresh(update);
+            });
+          }
+
+          Future<void> importDocument() async {
+            try {
+              final picked = await FilePicker.platform.pickFiles(
+                type: FileType.custom,
+                allowedExtensions: const ['txt', 'md', 'csv', 'json', 'log'],
+                withData: true,
+              );
+              if (picked == null || picked.files.isEmpty) return;
+              final file = picked.files.first;
+              final bytes = file.bytes;
+              if (bytes == null) throw Exception('Não foi possível ler o arquivo selecionado.');
+              if (bytes.length > 100 * 1024) throw Exception('O arquivo deve ter no máximo 100 KB.');
+              final content = utf8.decode(bytes, allowMalformed: false).trim();
+              if (content.isEmpty) throw Exception('O documento está vazio.');
+              update(() { busyDocuments = true; documentsError = null; });
+              await _request('/documents', method: 'POST', body: {
+                'filename': file.name,
+                'content': content,
+              });
+              await refresh(update);
+            } catch (e) {
+              update(() { busyDocuments = false; documentsError = _errorMessage(e); });
+            }
+          }
+
+          Future<void> deleteDocument(String id) async {
+            update(() { busyDocuments = true; documentsError = null; });
+            try {
+              await _request('/documents/${Uri.encodeComponent(id)}', method: 'DELETE');
+              await refresh(update);
+            } catch (e) {
+              update(() { busyDocuments = false; documentsError = _errorMessage(e); });
+            }
+          }
+
+          return AlertDialog(
+            title: const Text('Documentos e contexto'),
+            content: SizedBox(
+              width: 460,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Importe documentos de texto para o Syntra buscar trechos relevantes ao responder.'),
+                    const SizedBox(height: 12),
+                    FilledButton.icon(
+                      onPressed: busyDocuments ? null : importDocument,
+                      icon: const Icon(Icons.upload_file),
+                      label: const Text('Importar arquivo'),
+                    ),
+                    const SizedBox(height: 8),
+                    Text('TXT, MD, CSV, JSON ou LOG · até 100 KB por arquivo · até 50 documentos', style: Theme.of(context).textTheme.bodySmall),
+                    if (documentsError != null) ...[
+                      const SizedBox(height: 8),
+                      Text(documentsError!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                    ],
+                    if (busyDocuments) const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: Center(child: CircularProgressIndicator()),
+                    ),
+                    if (metrics != null)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Text('Conversas: ${metrics!['conversations']} · Mensagens: ${metrics!['messages']} · Documentos: ${metrics!['documents']}'),
+                      ),
+                    if (documents.isEmpty && !busyDocuments)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 12),
+                        child: Text('Nenhum documento importado.'),
+                      ),
+                    ...documents.map((doc) => ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.description_outlined),
+                      title: Text(doc['filename']?.toString() ?? 'Documento', maxLines: 1, overflow: TextOverflow.ellipsis),
+                      subtitle: Text('${doc['characters'] ?? 0} caracteres'),
+                      trailing: IconButton(
+                        tooltip: 'Excluir documento',
+                        onPressed: busyDocuments ? null : () => deleteDocument(doc['id'].toString()),
+                        icon: const Icon(Icons.delete_outline),
+                      ),
+                    )),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Concluído')),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   Future<void> _openSettings() async {
     await showModalBottomSheet<void>(
       context: context,
@@ -1224,6 +1357,15 @@ class _ChatPageState extends State<ChatPage> {
                         },
                 ),
               const SizedBox(height: 20),
+              ListTile(
+                leading: const Icon(Icons.description_outlined),
+                title: const Text('Documentos e métricas'),
+                subtitle: const Text('Importar arquivos e ver uso da conta'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _openDocumentsSettings();
+                },
+              ),
               ListTile(
                 leading: const Icon(Icons.psychology_outlined),
                 title: const Text('Memória contextual'),
